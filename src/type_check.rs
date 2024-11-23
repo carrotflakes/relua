@@ -136,7 +136,7 @@ fn type_match(expect: &Type, actual: &Type) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!(
-            "Type mismatch, expected {:?}, got {:?}",
+            "Type mismatch, expected {}, got {}",
             expect, actual
         ))
     }

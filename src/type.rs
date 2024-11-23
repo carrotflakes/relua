@@ -70,6 +70,50 @@ impl Type {
     }
 }
 
+impl std::fmt::Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Type::Number => write!(f, "num"),
+            Type::String => write!(f, "str"),
+            Type::Bool => write!(f, "bool"),
+            Type::Array(t) => write!(f, "[{}]", t),
+            Type::Tuple(ts) => {
+                write!(f, "(")?;
+                for (i, t) in ts.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", t)?;
+                }
+                write!(f, ")")
+            }
+            Type::Table => write!(f, "table"),
+            Type::Function(ps, r) => {
+                write!(f, "(")?;
+                for (i, t) in ps.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", t)?;
+                }
+                write!(f, ") -> {}", r)
+            }
+            Type::Nil => write!(f, "()"),
+            Type::Unknown => write!(f, "unknown"),
+            Type::Union(ts) => {
+                write!(f, "(")?;
+                for (i, t) in ts.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, " | ")?;
+                    }
+                    write!(f, "{}", t)?;
+                }
+                write!(f, ")")
+            }
+        }
+    }
+}
+
 #[test]
 fn test() {
     let t = Type::Union(vec![
