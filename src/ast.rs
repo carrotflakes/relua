@@ -10,7 +10,7 @@ pub enum Definition {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
     pub parameters: Vec<(String, Type)>,
-    pub return_type: Type,
+    pub return_type: Option<Type>,
     pub body: Vec<Statement>,
 }
 

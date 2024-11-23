@@ -20,7 +20,7 @@ peg::parser!(pub grammar parser() for str {
         "{" _
         stmts:statements()
         _ "}" _
-        { Definition::Function {name, function: Function { parameters: params, return_type: rt.unwrap_or(Type::Nil), body: stmts } } }
+        { Definition::Function {name, function: Function { parameters: params, return_type: rt, body: stmts } } }
 
     rule def_var() -> Definition
         = _ "let" _ name:identifier() _ t:(":" _ t:type_() _ { t })? "=" _ e:expression() _
@@ -128,7 +128,7 @@ peg::parser!(pub grammar parser() for str {
         "{" _
         stmts:statements()
         _ "}" _
-        { Function { parameters: params, return_type: rt.unwrap_or(Type::Nil), body: stmts } }
+        { Function { parameters: params, return_type: rt, body: stmts } }
 
     rule identifier() -> String
         = quiet!{ !keyword() n:$(['a'..='z' | 'A'..='Z' | '_']['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*) { n.to_owned() } }

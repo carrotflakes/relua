@@ -40,6 +40,10 @@ let a: {f: (num) -> num} = {
         return a * 2
     }
 }"#,
+r#"
+fn f() -> () {
+    f()
+}"#,
     ];
     for src in &srcs {
         let defs = front::parser::program(src).unwrap();

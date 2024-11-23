@@ -4,6 +4,11 @@ use std::ops::Deref;
 use crate::ast;
 use crate::r#type::{ConstData, Type, TypeTable};
 
+enum ReturnType {
+    Fixed(Type),
+    Infer(Vec<Type>),
+}
+
 pub fn check_definitions(defs: &[ast::Definition]) -> Result<(), String> {
     let mut bindings: HashMap<String, Type> = vec![
         (
@@ -27,12 +32,23 @@ pub fn check_definitions(defs: &[ast::Definition]) -> Result<(), String> {
     for def in defs.iter() {
         match def {
             ast::Definition::Function { name, function } => {
-                check_function(bindings.clone(), function)?;
+                if let Some(ret_type) = &function.return_type {
+                    // Add function to bindings to allow recursion
+                    bindings.insert(
+                        name.clone(),
+                        Type::Function(
+                            function.parameters.iter().map(|(_, t)| t.clone()).collect(),
+                            Box::new(ret_type.clone()),
+                        ),
+                    );
+                }
+
+                let ret_type = check_function(bindings.clone(), function)?;
                 bindings.insert(
                     name.clone(),
                     Type::Function(
                         function.parameters.iter().map(|(_, t)| t.clone()).collect(),
-                        Box::new(function.return_type.clone()),
+                        Box::new(ret_type),
                     ),
                 );
             }
@@ -56,18 +72,30 @@ pub fn check_definitions(defs: &[ast::Definition]) -> Result<(), String> {
 fn check_function(
     mut bindings: HashMap<String, Type>,
     function: &ast::Function,
-) -> Result<(), String> {
+) -> Result<Type, String> {
     for (name, type_) in &function.parameters {
         bindings.insert(name.clone(), type_.clone());
     }
-    check_statements(bindings, &function.body, &function.return_type)?;
-    Ok(())
+
+    let mut ret_type = match &function.return_type {
+        Some(t) => ReturnType::Fixed(t.clone()),
+        None => ReturnType::Infer(vec![]),
+    };
+
+    check_statements(bindings, &function.body, &mut ret_type)?;
+
+    let ret_type = match ret_type {
+        ReturnType::Fixed(t) => t,
+        ReturnType::Infer(types) => Type::from_types(types).unwrap_or(Type::Nil),
+    };
+
+    Ok(ret_type)
 }
 
 fn check_statements(
     mut bindings: HashMap<String, Type>,
     stmts: &[ast::Statement],
-    return_type: &Type,
+    return_type: &mut ReturnType,
 ) -> Result<(), String> {
     for stmt in stmts {
         match stmt {
@@ -117,7 +145,14 @@ fn check_statements(
             ast::Statement::Return(expression) => {
                 if let Some(expression) = expression {
                     let actual = check_expression(bindings.clone(), expression)?;
-                    type_match(return_type, &actual)?;
+                    match return_type {
+                        ReturnType::Fixed(expect) => {
+                            type_match(expect, &actual)?;
+                        }
+                        ReturnType::Infer(types) => {
+                            types.push(actual);
+                        }
+                    }
                 }
             }
         }
@@ -187,10 +222,10 @@ fn check_expression(
             check_table(&table_type, &index_type)?
         }
         ast::Expression::Fn(function) => {
-            check_function(bindings.clone(), function)?;
+            let ret_type = check_function(bindings.clone(), function)?;
             Type::Function(
                 function.parameters.iter().map(|(_, t)| t.clone()).collect(),
-                Box::new(function.return_type.clone()),
+                Box::new(ret_type),
             )
         }
         ast::Expression::Table(vec) => {
