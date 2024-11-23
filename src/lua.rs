@@ -2,7 +2,11 @@ use std::fmt::Write;
 
 use crate::ast;
 
-pub fn definitions(writer: &mut impl Write, defs: &[ast::Definition]) -> std::fmt::Result {
+pub fn write_lua(writer: &mut impl Write, defs: &[ast::Definition]) -> std::fmt::Result {
+    definitions(writer, defs)
+}
+
+fn definitions(writer: &mut impl Write, defs: &[ast::Definition]) -> std::fmt::Result {
     for def in defs {
         match def {
             ast::Definition::Function { name, function } => {

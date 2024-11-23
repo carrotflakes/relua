@@ -169,6 +169,12 @@ impl TypeTable {
                 .as_ref()
                 .map(|o| self.bool.as_ref().map(|s| s.include(&o)).unwrap_or(false))
                 .unwrap_or(true)
+            && self.consts.iter().all(|(cd, t)| {
+                other
+                    .consts
+                    .iter()
+                    .any(|(other_cd, other_t)| other_cd == cd && other_t.include(t))
+            })
             && other.consts.iter().all(|(cd, t)| {
                 self.consts
                     .iter()
