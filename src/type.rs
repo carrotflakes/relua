@@ -1,4 +1,4 @@
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Type {
     Number,
     String,
@@ -40,4 +40,41 @@ impl Type {
             (Type::Union(l), r) => l.iter().any(|t| t.include(r)),
         }
     }
+
+    pub fn normalize(&self) -> Type {
+        match self {
+            Type::Union(types) => {
+                let mut types = types
+                    .iter()
+                    .flat_map(|t| match t.normalize() {
+                        Type::Union(ts) => ts.iter().cloned().collect::<Vec<_>>(),
+                        t => vec![t.clone()],
+                    })
+                    .collect::<Vec<_>>();
+                types.sort();
+                types.dedup();
+                if types.len() == 1 {
+                    types.pop().unwrap()
+                } else {
+                    Type::Union(types)
+                }
+            }
+            Type::Array(t) => Type::Array(Box::new(t.normalize())),
+            Type::Tuple(ts) => Type::Tuple(ts.iter().map(|t| t.normalize()).collect()),
+            Type::Function(ps, r) => Type::Function(
+                ps.iter().map(|t| t.normalize()).collect(),
+                Box::new(r.normalize()),
+            ),
+            t => t.clone(),
+        }
+    }
+}
+
+#[test]
+fn test() {
+    let t = Type::Union(vec![
+        Type::Number,
+        Type::Union(vec![Type::String, Type::Number, Type::String, Type::Number]),
+    ]);
+    assert_eq!(t.normalize(), Type::Union(vec![Type::Number, Type::String]));
 }

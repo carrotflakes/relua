@@ -115,7 +115,7 @@ peg::parser!(pub grammar parser() for str {
         // / "&" i:identifier() { Expression::GlobalDataAddr(i) }
 
     rule type_() -> Type = precedence!{
-        a:@ _ "|" _ b:(@) { Type::Union(vec![a, b]) }
+        a:@ _ "|" _ b:(@) { Type::Union(vec![a, b]).normalize() }
         --
         a:type_atom() { a }
     }
