@@ -13,12 +13,13 @@ peg::parser!(pub grammar parser() for str {
     rule def_function() -> Definition
         = _ "fn" _ name:identifier() _
         "(" params:((_ i:identifier() _ ":" _ t:type_() {(i, t)}) ** ",") ")" _
-        "->" _
-        rt:type_() _
+        rt:(
+            "->" _ t:type_() _ { t }
+        )?
         "{" _
         stmts:statements()
         _ "}" _
-        { Definition::Function {name, function: Function { parameters: params, return_type: rt, body: stmts } } }
+        { Definition::Function {name, function: Function { parameters: params, return_type: rt.unwrap_or(Type::Nil), body: stmts } } }
 
     rule def_var() -> Definition
         = _ "let" _ name:identifier() _ ":" _ t:type_() _ "=" _ e:expression() _
@@ -136,6 +137,11 @@ peg::parser!(pub grammar parser() for str {
 #[test]
 fn test_parser() {
     let programs = [
+        r#"
+let a: num = 1
+fn main(a: num) {
+}
+"#,
         r#"
 fn main(a: num) -> num {
     let b: num = 1
