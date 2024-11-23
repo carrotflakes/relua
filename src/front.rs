@@ -77,6 +77,7 @@ peg::parser!(pub grammar parser() for str {
         a:(@) _ "/" _ b:@ { Expression::Call { function: "__div".to_owned(), arguments: vec![a, b] } }
         a:(@) _ "%" _ b:@ { Expression::Call { function: "__mod".to_owned(), arguments: vec![a, b] } }
         --
+        a:(@) _ "[" _ b:expression() _ "]" { Expression::Index { table: Box::new(a), index: Box::new(b) } }
         u:unary_op() { u }
     }
 
@@ -199,6 +200,9 @@ fn main() -> {bool, bool, [str]: num} {
         false,
     }
 }"#,
+r#"
+let a = {}[1][2]
+"#,
     ];
     for program in programs.iter() {
         let defs = parser::program(program).unwrap();

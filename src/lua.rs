@@ -113,11 +113,10 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
             }
             writer.write_str(")")?;
         }
-        ast::Expression::Index {
-            table: array,
-            index,
-        } => {
-            expression(writer, array)?;
+        ast::Expression::Index { table, index } => {
+            writer.write_str("(")?;
+            expression(writer, table)?;
+            writer.write_str(")")?;
             writer.write_str("[")?;
             expression(writer, index)?;
             writer.write_str("]")?;
@@ -140,9 +139,9 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
                         }
                     }
                     ast::TableKey::Expression(e) => {
-                            writer.write_str("[")?;
-                            expression(writer, e)?;
-                            writer.write_str("]")?;
+                        writer.write_str("[")?;
+                        expression(writer, e)?;
+                        writer.write_str("]")?;
                     }
                 }
                 writer.write_str(" = ")?;

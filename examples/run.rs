@@ -4,7 +4,7 @@ fn main() {
     let x: num = 5
     let y: num = 10
     let z: num = x + y
-    print({2: true, z})
+    print({2: true, z}[1])
 }
 main()
 "#;
