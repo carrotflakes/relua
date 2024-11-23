@@ -1,0 +1,8 @@
+[package]
+name = "relua"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+peg = "0.8"
+gilder = "0.1"
