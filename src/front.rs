@@ -110,12 +110,13 @@ peg::parser!(pub grammar parser() for str {
     rule function() -> Function
         = _ "fn" _
         "(" params:((_ i:identifier() _ ":" _ t:type_() {(i, t)}) ** ",") ")" _
-        "->" _
-        rt:type_() _
+        rt:(
+            "->" _ t:type_() _ { t }
+        )?
         "{" _
         stmts:statements()
         _ "}" _
-        { Function { parameters: params, return_type: rt, body: stmts } }
+        { Function { parameters: params, return_type: rt.unwrap_or(Type::Nil), body: stmts } }
 
     rule identifier() -> String
         = quiet!{ !keyword() n:$(['a'..='z' | 'A'..='Z' | '_']['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*) { n.to_owned() } }
@@ -152,11 +153,17 @@ peg::parser!(pub grammar parser() for str {
             let bool = ts.iter().find(|(k, _)| *k == "bool").map(|(_, v)| Box::new(v.clone()));
             Type::Table(TypeTable { consts: tes, number, string, bool })
         }
+        a:type_function() { a }
         a:type_atom() { a }
     }
 
     rule type_table_entry() -> (Option<Literal>, Type)
-        = k:(k:literal() _ ":" { k })? _ v:type_() { (k, v) }
+        = k:literal() _ ":" _ v:type_() { (Some(k), v) }
+        / i:identifier() _ ":" _ t:type_() { (Some(Literal::String(i)), t) }
+        / t:type_() { (None, t) }
+
+    rule type_function() -> Type
+        = "(" _ ps:((_ t:type_() _ { t }) ** ",") ")" r:(_ "->" _ r:type_() { r })? { Type::Function(ps, Box::new(r.unwrap_or(Type::Nil))) }
 
     rule type_atom() -> Type
         = "num" { Type::Number }
@@ -204,10 +211,10 @@ fn main() -> {bool, bool, [str]: num} {
         false,
     }
 }"#,
-r#"
+        r#"
 let a = {}[1][2]
 "#,
-r#"
+        r#"
 fn main() {
     if true {
         return 1
@@ -219,6 +226,13 @@ fn main() {
     }
     while true {
         return 4
+    }
+}
+"#,
+        r#"
+let a: {f: (num) -> num} = {
+    f: fn(a: num) -> num {
+        return a * 2
     }
 }
 "#,

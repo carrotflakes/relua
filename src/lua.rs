@@ -134,7 +134,18 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
             expression(writer, index)?;
             writer.write_str("]")?;
         }
-        ast::Expression::Fn(function) => todo!(),
+        ast::Expression::Fn(function) => {
+            writer.write_str("function(")?;
+            for (i, param) in function.parameters.iter().enumerate() {
+                if i > 0 {
+                    writer.write_str(", ")?;
+                }
+                writer.write_str(&param.0)?;
+            }
+            writer.write_str(")\n")?;
+            statements(writer, &function.body)?;
+            writer.write_str("end")?;
+        }
         ast::Expression::Table(vec) => {
             writer.write_str("{")?;
             for (i, (key, value)) in vec.iter().enumerate() {
