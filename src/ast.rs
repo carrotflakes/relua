@@ -47,7 +47,7 @@ pub enum Expression {
     Literal(Literal),
     Variable(String),
     Call {
-        function: String,
+        function: Box<Expression>,
         arguments: Vec<Expression>,
     },
     Index {

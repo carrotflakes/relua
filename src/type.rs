@@ -7,6 +7,7 @@ pub enum Type {
     Function(Vec<Type>, Box<Type>),
     Nil,
     Unknown,
+    Any,
     Const(ConstData),
     Union(Vec<Type>),
 }
@@ -32,6 +33,8 @@ pub struct F64(f64);
 impl Type {
     pub fn include(&self, other: &Type) -> bool {
         match (self, other) {
+            (Type::Any, _) => true,
+            (_, Type::Any) => true,
             (Type::Const(l), Type::Const(r)) => l == r,
             (Type::Const(_), _) => false,
             (l, Type::Const(cd)) => l.include(&cd.r#type()),
@@ -124,6 +127,7 @@ impl std::fmt::Display for Type {
             }
             Type::Nil => write!(f, "()"),
             Type::Unknown => write!(f, "unknown"),
+            Type::Any => write!(f, "any"),
             Type::Union(ts) => {
                 write!(f, "(")?;
                 for (i, t) in ts.iter().enumerate() {

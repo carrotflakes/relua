@@ -1,13 +1,28 @@
 use std::collections::HashMap;
+use std::ops::Deref;
 
 use crate::ast;
 use crate::r#type::{ConstData, Type, TypeTable};
 
 pub fn check_definitions(defs: &[ast::Definition]) -> Result<(), String> {
-    let mut bindings: HashMap<String, Type> = vec![("print", vec![Type::Unknown], Type::Nil)]
-        .into_iter()
-        .map(|(name, params, ret)| (name.to_owned(), Type::Function(params, Box::new(ret))))
-        .collect();
+    let mut bindings: HashMap<String, Type> = vec![
+        (
+            "print",
+            Type::Function(vec![Type::Unknown], Box::new(Type::Nil)),
+        ),
+        (
+            "math",
+            Type::Table(TypeTable {
+                consts: vec![],
+                number: None,
+                string: Some(Box::new(Type::Any)),
+                bool: None,
+            }),
+        ),
+    ]
+    .into_iter()
+    .map(|(name, value)| (name.to_owned(), value))
+    .collect();
 
     for def in defs.iter() {
         match def {
@@ -114,34 +129,26 @@ fn check_expression(
             function,
             arguments,
         } => {
-            match function.as_str() {
-                "__eq" => {
-                    if arguments.len() != 2 {
-                        return Err("Argument count mismatch".to_string());
+            let func_type =
+                if let ast::Expression::Literal(ast::Literal::String(f)) = function.deref() {
+                    match f.as_str() {
+                        "__eq" => Type::Function(vec![Type::Any, Type::Any], Box::new(Type::Bool)),
+                        "__lt" | "__le" => {
+                            Type::Function(vec![Type::Number, Type::Number], Box::new(Type::Bool))
+                        }
+                        "__add" | "__sub" | "__mul" | "__div" | "__mod" => {
+                            Type::Function(vec![Type::Number, Type::Number], Box::new(Type::Number))
+                        }
+                        _ => check_expression(bindings.clone(), function)?,
                     }
-                    return Ok(Type::Bool);
-                }
-                "__lt" | "__le" => {
-                    if arguments.len() != 2 {
-                        return Err("Argument count mismatch".to_string());
-                    }
-                    for arg in arguments {
-                        type_match(&Type::Number, &check_expression(bindings.clone(), arg)?)?;
-                    }
-                    return Ok(Type::Bool);
-                }
-                "__add" | "__sub" | "__mul" | "__div" | "__mod" => {
-                    if arguments.len() != 2 {
-                        return Err("Argument count mismatch".to_string());
-                    }
-                    for arg in arguments {
-                        type_match(&Type::Number, &check_expression(bindings.clone(), arg)?)?;
-                    }
-                    return Ok(Type::Number);
-                }
-                _ => {}
+                } else {
+                    check_expression(bindings.clone(), function)?
+                };
+
+            if let Type::Any = func_type {
+                return Ok(Type::Any);
             }
-            let func_type = bindings.get(function).ok_or("Function not found")?.clone();
+
             if let Type::Function(params, return_type) = func_type {
                 if params.len() != arguments.len() {
                     return Err("Argument count mismatch".to_string());

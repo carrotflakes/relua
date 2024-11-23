@@ -1,6 +1,6 @@
-use std::fmt::Write;
+use std::{fmt::Write, ops::Deref};
 
-use crate::ast;
+use crate::ast::{self, Expression, Literal};
 
 pub fn write_lua(writer: &mut impl Write, defs: &[ast::Definition]) -> std::fmt::Result {
     definitions(writer, defs)
@@ -101,16 +101,20 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
             function,
             arguments,
         } => {
-            let op = match function.as_str() {
-                "__eq" => Some("=="),
-                "__lt" => Some("<"),
-                "__le" => Some("<="),
-                "__add" => Some("+"),
-                "__sub" => Some("-"),
-                "__mul" => Some("*"),
-                "__div" => Some("/"),
-                "__mod" => Some("%"),
-                _ => None,
+            let op = if let Expression::Literal(Literal::String(f)) = function.deref() {
+                match f.as_str() {
+                    "__eq" => Some("=="),
+                    "__lt" => Some("<"),
+                    "__le" => Some("<="),
+                    "__add" => Some("+"),
+                    "__sub" => Some("-"),
+                    "__mul" => Some("*"),
+                    "__div" => Some("/"),
+                    "__mod" => Some("%"),
+                    _ => None,
+                }
+            } else {
+                None
             };
             if let Some(op) = op {
                 writer.write_str("(")?;
@@ -120,7 +124,7 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
                 writer.write_str(")")?;
                 return Ok(());
             }
-            writer.write_str(function)?;
+            expression(writer, &function)?;
             writer.write_str("(")?;
             for (i, arg) in arguments.iter().enumerate() {
                 if i > 0 {
