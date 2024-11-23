@@ -203,7 +203,28 @@ impl TypeTable {
 
 impl std::fmt::Display for TypeTable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+        write!(f, "{{")?;
+        for (i, (cd, t)) in self.consts.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            match cd {
+                ConstData::Number(n) => write!(f, "{}", n.0),
+                ConstData::String(s) => write!(f, "{:?}", s),
+                ConstData::Bool(b) => write!(f, "{}", b),
+            }?;
+            write!(f, ": {}", t)?;
+        }
+        if let Some(t) = &self.number {
+            write!(f, ", [num]: {}", t)?;
+        }
+        if let Some(t) = &self.string {
+            write!(f, ", [str]: {}", t)?;
+        }
+        if let Some(t) = &self.bool {
+            write!(f, ", [bool]: {}", t)?;
+        }
+        write!(f, "}}")
     }
 }
 
