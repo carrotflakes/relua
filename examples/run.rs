@@ -8,6 +8,16 @@ fn main() {
         z = z - 8
     }
     print({2: true, z}[1])
+
+    let i: num = 1
+    while i < 10 {
+        if i % 2 == 0 {
+            print("even")
+        } else {
+            print(i)
+        }
+        i = i + 1
+    }
 }
 main()
 "#;
