@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use crate::ast;
-use crate::r#type::Type;
+use crate::r#type::{ConstData, Type};
 
 pub fn check_definitions(defs: &[ast::Definition]) -> Result<(), String> {
     let mut bindings: HashMap<String, Type> = vec![("print", vec![Type::Unknown], Type::Nil)]
@@ -23,7 +23,12 @@ pub fn check_definitions(defs: &[ast::Definition]) -> Result<(), String> {
             }
             ast::Definition::Variable(var) => {
                 let actual = check_expression(bindings.clone(), &var.expr)?;
-                type_match(&var.type_, &actual)?;
+                if let Some(expect) = &var.type_ {
+                    type_match(expect, &actual)?;
+                    bindings.insert(var.name.clone(), expect.clone());
+                } else {
+                    bindings.insert(var.name.clone(), actual);
+                }
             }
             ast::Definition::Expression(expr) => {
                 check_expression(bindings.clone(), expr)?;
@@ -47,8 +52,12 @@ fn check_function(
             }
             ast::Statement::Let(variable) => {
                 let actual = check_expression(bindings.clone(), &variable.expr)?;
-                type_match(&variable.type_, &actual)?;
-                bindings.insert(variable.name.clone(), variable.type_.clone());
+                if let Some(expect) = &variable.type_ {
+                    type_match(expect, &actual)?;
+                    bindings.insert(variable.name.clone(), expect.clone());
+                } else {
+                    bindings.insert(variable.name.clone(), actual);
+                }
             }
             ast::Statement::Assignment { target, e } => {
                 let var_type = bindings.get(target).ok_or("Variable not found")?.clone();
@@ -78,9 +87,11 @@ fn check_expression(
 ) -> Result<Type, String> {
     Ok(match expr {
         ast::Expression::Literal(literal) => match literal {
-            ast::Literal::Number(_) => Type::Number,
-            ast::Literal::Bool(_) => Type::Bool,
-            ast::Literal::String(_) => Type::String,
+            ast::Literal::Number(n) => ConstData::try_from_f64(*n)
+                .map(Type::Const)
+                .unwrap_or(Type::Number),
+            ast::Literal::Bool(b) => Type::Const(ConstData::Bool(*b)),
+            ast::Literal::String(s) => Type::Const(ConstData::String(s.clone())),
         },
         ast::Expression::Variable(name) => bindings.get(name).ok_or("Variable not found")?.clone(),
         ast::Expression::Call {

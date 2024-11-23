@@ -23,7 +23,7 @@ peg::parser!(pub grammar parser() for str {
         { Definition::Function {name, function: Function { parameters: params, return_type: rt.unwrap_or(Type::Nil), body: stmts } } }
 
     rule def_var() -> Definition
-        = _ "let" _ name:identifier() _ ":" _ t:type_() _ "=" _ e:expression() _
+        = _ "let" _ name:identifier() _ t:(":" _ t:type_() _ { t })? "=" _ e:expression() _
         { Definition::Variable(Variable { name, type_: t, expr: e }) }
 
     rule statements() -> Vec<Statement>
@@ -31,7 +31,7 @@ peg::parser!(pub grammar parser() for str {
 
     rule statement() -> Statement
         = _ "return" _ e:expression() _ { Statement::Return(Some(e)) }
-        / _ "let" _ name:identifier() _ ":" _ t:type_() _ "=" _ e:expression() _
+        / _ "let" _ name:identifier() _ t:(":" _ t:type_() _ { t })? "=" _ e:expression() _
             { Statement::Let(Variable { name, type_: t, expr: e }) }
         / _ e:expression() _ { Statement::Expression(e) }
         / if_else()

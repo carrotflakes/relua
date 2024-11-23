@@ -17,7 +17,7 @@ pub struct Function {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Variable {
     pub name: String,
-    pub type_: Type,
+    pub type_: Option<Type>,
     pub expr: Expression,
 }
 

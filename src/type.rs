@@ -9,12 +9,26 @@ pub enum Type {
     Function(Vec<Type>, Box<Type>),
     Nil,
     Unknown,
+    Const(ConstData),
     Union(Vec<Type>),
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ConstData {
+    Number(F64),
+    String(String),
+    Bool(bool),
+}
+
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
+pub struct F64(f64);
 
 impl Type {
     pub fn include(&self, other: &Type) -> bool {
         match (self, other) {
+            (Type::Const(l), Type::Const(r)) => l == r,
+            (Type::Const(_), _) => false,
+            (l, Type::Const(cd)) => l.include(&cd.r#type()),
             (Type::Number, Type::Number) => true,
             (Type::Number, _) => false,
             (Type::String, Type::String) => true,
@@ -112,7 +126,38 @@ impl std::fmt::Display for Type {
                 }
                 write!(f, ")")
             }
+            Type::Const(const_data) => match const_data {
+                ConstData::Number(n) => write!(f, "{}", n.0),
+                ConstData::String(s) => write!(f, "{:?}", s),
+                ConstData::Bool(b) => write!(f, "{}", b),
+            },
         }
+    }
+}
+
+impl ConstData {
+    pub fn r#type(&self) -> Type {
+        match self {
+            ConstData::Number(_) => Type::Number,
+            ConstData::String(_) => Type::String,
+            ConstData::Bool(_) => Type::Bool,
+        }
+    }
+
+    pub fn try_from_f64(n: f64) -> Option<Self> {
+        if n.is_nan() {
+            None
+        } else {
+            Some(ConstData::Number(F64(n)))
+        }
+    }
+}
+
+impl Eq for F64 {}
+
+impl Ord for F64 {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
     }
 }
 
