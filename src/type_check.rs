@@ -4,14 +4,10 @@ use crate::ast;
 use crate::r#type::Type;
 
 pub fn check_definitions(defs: &[ast::Definition]) -> Result<(), String> {
-    let mut bindings: HashMap<String, Type> = vec![
-        ("__eq", vec![Type::Number, Type::Number], Type::Bool),
-        ("__add", vec![Type::Number, Type::Number], Type::Number),
-        ("__mul", vec![Type::Number, Type::Number], Type::Number),
-    ]
-    .into_iter()
-    .map(|(name, params, ret)| (name.to_owned(), Type::Function(params, Box::new(ret))))
-    .collect();
+    let mut bindings: HashMap<String, Type> = vec![("print", vec![Type::Unknown], Type::Nil)]
+        .into_iter()
+        .map(|(name, params, ret)| (name.to_owned(), Type::Function(params, Box::new(ret))))
+        .collect();
 
     for def in defs.iter() {
         match def {
@@ -88,6 +84,24 @@ fn check_expression(
             function,
             arguments,
         } => {
+            match function.as_str() {
+                "__eq" => {
+                    if arguments.len() != 2 {
+                        return Err("Argument count mismatch".to_string());
+                    }
+                    return Ok(Type::Bool);
+                }
+                "__add" | "__mul" => {
+                    if arguments.len() != 2 {
+                        return Err("Argument count mismatch".to_string());
+                    }
+                    for arg in arguments {
+                        type_match(&Type::Number, &check_expression(bindings.clone(), arg)?)?;
+                    }
+                    return Ok(Type::Number);
+                }
+                _ => {}
+            }
             let func_type = bindings.get(function).ok_or("Function not found")?.clone();
             if let Type::Function(params, return_type) = func_type {
                 if params.len() != arguments.len() {
