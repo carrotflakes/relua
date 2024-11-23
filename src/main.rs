@@ -1,7 +1,12 @@
-use relua::{ast::Definition, type_check};
+use std::io::Read;
+
+use relua::compile;
 
 fn main() {
-    // type_check::type_check(&[
-    //     Declaration
-    // ])
+    let mut src = String::new();
+    std::io::stdin().read_to_string(&mut src).unwrap();
+
+    let output = compile(&src).unwrap();
+
+    println!("{}", output);
 }

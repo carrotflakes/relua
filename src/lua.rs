@@ -22,6 +22,10 @@ pub fn definitions(writer: &mut impl Write, defs: &[ast::Definition]) -> std::fm
                 expression(writer, &variable.expr)?;
                 writer.write_str("\n")?;
             }
+            ast::Definition::Expression(e) => {
+                expression(writer, e)?;
+                writer.write_str("\n")?;
+            }
         }
     }
     Ok(())
@@ -43,9 +47,17 @@ fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Re
                 expression(writer, expr)?;
                 writer.write_str("\n")?;
             }
-            ast::Statement::Let(variable) => todo!(),
+            ast::Statement::Let(variable) => {
+                writer.write_str(&format!("local {} = ", variable.name))?;
+                expression(writer, &variable.expr)?;
+                writer.write_str("\n")?;
+            }
             ast::Statement::Assignment { target, e } => todo!(),
-            ast::Statement::If { condition, then, else_ } => todo!(),
+            ast::Statement::If {
+                condition,
+                then,
+                else_,
+            } => todo!(),
             ast::Statement::While { condition, body } => todo!(),
         }
     }
@@ -59,11 +71,38 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
         }
         ast::Expression::Variable(v) => {
             writer.write_str(&format!("{}", v))?;
-        },
+        }
         ast::Expression::Call {
             function,
             arguments,
         } => {
+            match function.as_str() {
+                "__eq" => {
+                    writer.write_str("(")?;
+                    expression(writer, &arguments[0])?;
+                    writer.write_str("==")?;
+                    expression(writer, &arguments[1])?;
+                    writer.write_str(")")?;
+                    return Ok(());
+                }
+                "__add" => {
+                    writer.write_str("(")?;
+                    expression(writer, &arguments[0])?;
+                    writer.write_str("+")?;
+                    expression(writer, &arguments[1])?;
+                    writer.write_str(")")?;
+                    return Ok(());
+                }
+                "__mul" => {
+                    writer.write_str("(")?;
+                    expression(writer, &arguments[0])?;
+                    writer.write_str("*")?;
+                    expression(writer, &arguments[1])?;
+                    writer.write_str(")")?;
+                    return Ok(());
+                }
+                _ => {}
+            }
             writer.write_str(function)?;
             writer.write_str("(")?;
             for (i, arg) in arguments.iter().enumerate() {
@@ -73,13 +112,13 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
                 expression(writer, arg)?;
             }
             writer.write_str(")")?;
-        },
+        }
         ast::Expression::Index { array, index } => {
             expression(writer, array)?;
             writer.write_str("[")?;
             expression(writer, index)?;
             writer.write_str("]")?;
-        },
+        }
         ast::Expression::Tuple(vec) => {
             writer.write_str("{")?;
             for (i, expr) in vec.iter().enumerate() {
@@ -89,7 +128,7 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
                 expression(writer, expr)?;
             }
             writer.write_str("}")?;
-        },
+        }
         ast::Expression::Fn(function) => todo!(),
         ast::Expression::Table(vec) => todo!(),
         ast::Expression::LogicalAnd(a, b) => todo!(),

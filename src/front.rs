@@ -9,6 +9,7 @@ peg::parser!(pub grammar parser() for str {
     rule definition() -> Definition
         = def_function()
         / def_var()
+        / e:expression() _ { Definition::Expression(e) }
 
     rule def_function() -> Definition
         = _ "fn" _ name:identifier() _
@@ -141,6 +142,7 @@ fn test_parser() {
 let a: num = 1
 fn main(a: num) {
 }
+main(2)
 "#,
         r#"
 fn main(a: num) -> num {

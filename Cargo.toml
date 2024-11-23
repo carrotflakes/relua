@@ -6,3 +6,6 @@ edition = "2021"
 [dependencies]
 peg = "0.8"
 gilder = "0.1"
+
+[dev-dependencies]
+mlua = { version = "0.10", features = ["lua54", "vendored"] }

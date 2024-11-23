@@ -1,0 +1,6 @@
+fn main() {
+    let x: num = 5
+    let y: num = 10
+    let z: num = x + y
+    print(z)
+}

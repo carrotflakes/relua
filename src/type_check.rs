@@ -25,6 +25,9 @@ pub fn check_definitions(defs: &[ast::Definition]) -> Result<(), String> {
                 let actual = check_expression(bindings.clone(), &var.expr)?;
                 type_match(&var.type_, &actual)?;
             }
+            ast::Definition::Expression(expr) => {
+                check_expression(bindings.clone(), expr)?;
+            }
         }
     }
     Ok(())

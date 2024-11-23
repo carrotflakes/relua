@@ -4,6 +4,7 @@ use crate::r#type::Type;
 pub enum Definition {
     Function { name: String, function: Function },
     Variable(Variable),
+    Expression(Expression),
 }
 
 #[derive(Debug, Clone, PartialEq)]
