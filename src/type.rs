@@ -26,6 +26,8 @@ impl Type {
             (Type::Tuple(l), Type::Tuple(r)) => l.iter().zip(r.iter()).all(|(l, r)| l.include(r)),
             (Type::Tuple(_), _) => false,
             (Type::Table, Type::Table) => true,
+            (Type::Table, Type::Array(_)) => true,
+            (Type::Table, Type::Tuple(_)) => true,
             (Type::Table, _) => false,
             (Type::Function(l_ps, l_ret), Type::Function(r_ps, r_ret)) => {
                 l_ps.len() == r_ps.len()
