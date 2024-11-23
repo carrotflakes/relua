@@ -111,7 +111,7 @@ peg::parser!(pub grammar parser() for str {
         = "fn" / "let"/ "if" / "else" / "while" / "return" / "true" / "false"
 
     rule literal() -> Expression
-        = n:$(['0'..='9']+) { Expression::Literal(Literal::Number(n.parse().unwrap())) }
+        = n:$(['0'..='9']+ ("." ['0'..='9']*)?) { Expression::Literal(Literal::Number(n.parse().unwrap())) }
         / "true" { Expression::Literal(Literal::Bool(true)) }
         / "false" { Expression::Literal(Literal::Bool(false)) }
         // / "&" i:identifier() { Expression::GlobalDataAddr(i) }
@@ -140,6 +140,7 @@ fn test_parser() {
     let programs = [
         r#"
 let a: num = 1
+let b: num = 1.23
 fn main(a: num) {
 }
 main(2)
