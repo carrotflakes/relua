@@ -32,16 +32,14 @@ pub fn check_definitions(defs: &[ast::Definition]) -> Result<(), String> {
     for def in defs.iter() {
         match def {
             ast::Definition::Function { name, function } => {
-                if let Some(ret_type) = &function.return_type {
-                    // Add function to bindings to allow recursion
-                    bindings.insert(
-                        name.clone(),
-                        Type::Function(
-                            function.parameters.iter().map(|(_, t)| t.clone()).collect(),
-                            Box::new(ret_type.clone()),
-                        ),
-                    );
-                }
+                // Add function to bindings to allow recursion
+                bindings.insert(
+                    name.clone(),
+                    Type::Function(
+                        function.parameters.iter().map(|(_, t)| t.clone()).collect(),
+                        Box::new(function.return_type.clone().unwrap_or(Type::Unknown)),
+                    ),
+                );
 
                 let ret_type = check_function(bindings.clone(), function)?;
                 bindings.insert(

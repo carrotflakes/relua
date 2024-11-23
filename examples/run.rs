@@ -1,5 +1,12 @@
 fn main() {
     let src = r#"
+fn fib(n: num) -> num {
+    if n <= 1 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
 fn main() {
     let x: num = 5
     let y: num = 10
@@ -18,6 +25,8 @@ fn main() {
         }
         i = i + 1
     }
+
+    print(fib(10))
 }
 main()
 "#;
