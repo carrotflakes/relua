@@ -202,12 +202,20 @@ fn check_expression(
                 bool: Type::from_types(bool).map(Box::new),
             })
         }
-        ast::Expression::LogicalAnd(a, b) => todo!(),
-        ast::Expression::LogicalOr(a, b) => todo!(),
+        ast::Expression::LogicalAnd(a, b) => {
+            let a = check_expression(bindings.clone(), a)?;
+            let b = check_expression(bindings.clone(), b)?;
+            Type::from_types(vec![a, b]).unwrap()
+        }
+        ast::Expression::LogicalOr(a, b) => {
+            let a = check_expression(bindings.clone(), a)?;
+            let b = check_expression(bindings.clone(), b)?;
+            Type::from_types(vec![a, b]).unwrap()
+        }
         ast::Expression::LogicalNot(e) => {
             check_expression(bindings.clone(), e)?;
             Type::Bool
-        },
+        }
     })
 }
 

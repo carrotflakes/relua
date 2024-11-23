@@ -31,6 +31,9 @@ fn main() {
 r#"
 let a: {1, 2} = {1, 2}
 "#,
+r#"
+let a: num | str = 1 || "a" && 2
+"#,
     ];
     for src in &srcs {
         let defs = front::parser::program(src).unwrap();

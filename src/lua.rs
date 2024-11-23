@@ -162,8 +162,20 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
             }
             writer.write_str("}")?;
         }
-        ast::Expression::LogicalAnd(a, b) => todo!(),
-        ast::Expression::LogicalOr(a, b) => todo!(),
+        ast::Expression::LogicalAnd(a, b) => {
+            writer.write_str("(")?;
+            expression(writer, a)?;
+            writer.write_str(" and ")?;
+            expression(writer, b)?;
+            writer.write_str(")")?;
+        }
+        ast::Expression::LogicalOr(a, b) => {
+            writer.write_str("(")?;
+            expression(writer, a)?;
+            writer.write_str(" or ")?;
+            expression(writer, b)?;
+            writer.write_str(")")?;
+        }
         ast::Expression::LogicalNot(e) => {
             writer.write_str("not ")?;
             expression(writer, e)?;

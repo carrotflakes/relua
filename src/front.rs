@@ -128,6 +128,7 @@ peg::parser!(pub grammar parser() for str {
         = n:$(['0'..='9']+ ("." ['0'..='9']*)?) { Literal::Number(n.parse().unwrap()) }
         / "true" { Literal::Bool(true) }
         / "false" { Literal::Bool(false) }
+        / s:string() { Literal::String(s) }
         // / "&" i:identifier() { Expression::GlobalDataAddr(i) }
 
     rule type_() -> Type = precedence!{
@@ -164,6 +165,9 @@ peg::parser!(pub grammar parser() for str {
         / "()" { Type::Nil }
         / "unknown" { Type::Unknown }
         / l:literal() { Type::Const(l.to_const_data()) }
+
+    rule string() -> String
+        = "\"" s:$([^'"']*) "\"" { s.to_owned() }
 
     rule _() =  quiet!{[' ' | '\t' | '\n']*}
 });
