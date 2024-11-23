@@ -57,7 +57,17 @@ fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Re
                 writer.write_str("\n")?;
             }
             ast::Statement::Assignment { target, e } => {
-                writer.write_str(target)?;
+                match target {
+                    ast::LValue::Variable(v) => {
+                        writer.write_str(v)?;
+                    }
+                    ast::LValue::Index(table, index) => {
+                        expression(writer, table)?;
+                        writer.write_str("[")?;
+                        expression(writer, index)?;
+                        writer.write_str("]")?;
+                    }
+                }
                 writer.write_str(" = ")?;
                 expression(writer, e)?;
                 writer.write_str("\n")?;

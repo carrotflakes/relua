@@ -84,7 +84,20 @@ fn check_statements(
                 }
             }
             ast::Statement::Assignment { target, e } => {
-                let var_type = bindings.get(target).ok_or("Variable not found")?.clone();
+                let var_type = match target {
+                    ast::LValue::Variable(name) => bindings
+                        .get(name)
+                        .ok_or_else(|| format!("Variable not found: {}", name))?
+                        .clone(),
+                    ast::LValue::Index(table, index) => {
+                        let table_type = check_expression(bindings.clone(), table)?;
+                        let Type::Table(table_type) = table_type else {
+                            return Err("Not a table".to_string());
+                        };
+                        let index_type = check_expression(bindings.clone(), index)?;
+                        check_table(&table_type, &index_type)?
+                    }
+                };
                 let actual = check_expression(bindings.clone(), e)?;
                 type_match(&var_type, &actual)?;
             }
@@ -124,7 +137,10 @@ fn check_expression(
             ast::Literal::Bool(b) => Type::Const(ConstData::Bool(*b)),
             ast::Literal::String(s) => Type::Const(ConstData::String(s.clone())),
         },
-        ast::Expression::Variable(name) => bindings.get(name).ok_or("Variable not found")?.clone(),
+        ast::Expression::Variable(name) => bindings
+            .get(name)
+            .ok_or_else(|| format!("Variable not found: {}", name))?
+            .clone(),
         ast::Expression::Call {
             function,
             arguments,

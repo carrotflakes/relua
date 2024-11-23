@@ -52,9 +52,19 @@ peg::parser!(pub grammar parser() for str {
 
     rule assignment() -> Statement
         = i:identifier() _ "=" _ e:expression() {Statement::Assignment {
-            target: i,
+            target: LValue::Variable(i),
             e,
         }}
+        / t:expression() _ "=" _ e:expression() {?
+            if let Expression::Index { table, index } = t {
+                Ok(Statement::Assignment {
+                    target: LValue::Index(table, index),
+                    e,
+                })
+            } else {
+                Err("expected index expression")
+            }
+        }
 
     rule expression() -> Expression
         = binary_op()
@@ -165,7 +175,7 @@ peg::parser!(pub grammar parser() for str {
         / t:type_() { (None, t) }
 
     rule type_function() -> Type
-        = "(" _ ps:((_ t:type_() _ { t }) ** ",") ")" r:(_ "->" _ r:type_() { r })? { Type::Function(ps, Box::new(r.unwrap_or(Type::Nil))) }
+        = "(" _ ps:((_ t:type_() _ { t }) ** ",") ")" _ "->" _ r:type_() { Type::Function(ps, Box::new(r)) }
 
     rule type_atom() -> Type
         = "num" { Type::Number }
@@ -241,6 +251,11 @@ let a: {f: (num) -> num} = {
     f: fn(a: num) -> num {
         return a * 2
     }
+}
+"#,
+r#"
+fn f() {
+    {1: 2, 3: 4}[1].a = 1
 }
 "#,
     ];

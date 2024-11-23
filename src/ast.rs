@@ -27,7 +27,7 @@ pub enum Statement {
     Let(Variable),
     // TODO: multiple assignment
     Assignment {
-        target: String,
+        target: LValue,
         e: Expression,
     },
     If {
@@ -59,6 +59,12 @@ pub enum Expression {
     LogicalAnd(Box<Expression>, Box<Expression>),
     LogicalOr(Box<Expression>, Box<Expression>),
     LogicalNot(Box<Expression>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum LValue {
+    Variable(String),
+    Index(Box<Expression>, Box<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
