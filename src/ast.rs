@@ -25,6 +25,7 @@ pub struct Variable {
 pub enum Statement {
     Expression(Expression),
     Let(Variable),
+    // TODO: multiple assignment
     Assignment {
         target: String,
         e: Expression,

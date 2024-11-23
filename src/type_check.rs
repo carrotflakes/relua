@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::ops::Deref;
 
 use crate::ast;
 use crate::r#type::{ConstData, Type, TypeTable};
@@ -46,7 +45,16 @@ fn check_function(
     for (name, type_) in &function.parameters {
         bindings.insert(name.clone(), type_.clone());
     }
-    for stmt in &function.body {
+    check_statements(bindings, &function.body, &function.return_type)?;
+    Ok(())
+}
+
+fn check_statements(
+    mut bindings: HashMap<String, Type>,
+    stmts: &[ast::Statement],
+    return_type: &Type,
+) -> Result<(), String> {
+    for stmt in stmts {
         match stmt {
             ast::Statement::Expression(expression) => {
                 check_expression(bindings.clone(), expression)?;
@@ -69,12 +77,19 @@ fn check_function(
                 condition,
                 then,
                 else_,
-            } => todo!(),
-            ast::Statement::While { condition, body } => todo!(),
+            } => {
+                check_expression(bindings.clone(), condition)?;
+                check_statements(bindings.clone(), then, return_type)?;
+                check_statements(bindings.clone(), else_, return_type)?;
+            }
+            ast::Statement::While { condition, body } => {
+                check_expression(bindings.clone(), condition)?;
+                check_statements(bindings.clone(), body, return_type)?;
+            }
             ast::Statement::Return(expression) => {
                 if let Some(expression) = expression {
                     let actual = check_expression(bindings.clone(), expression)?;
-                    type_match(&function.return_type, &actual)?;
+                    type_match(return_type, &actual)?;
                 }
             }
         }
@@ -106,7 +121,16 @@ fn check_expression(
                     }
                     return Ok(Type::Bool);
                 }
-                "__add" | "__mul" => {
+                "__lt" | "__le" => {
+                    if arguments.len() != 2 {
+                        return Err("Argument count mismatch".to_string());
+                    }
+                    for arg in arguments {
+                        type_match(&Type::Number, &check_expression(bindings.clone(), arg)?)?;
+                    }
+                    return Ok(Type::Bool);
+                }
+                "__add" | "__sub" | "__mul" => {
                     if arguments.len() != 2 {
                         return Err("Argument count mismatch".to_string());
                     }
@@ -180,7 +204,10 @@ fn check_expression(
         }
         ast::Expression::LogicalAnd(a, b) => todo!(),
         ast::Expression::LogicalOr(a, b) => todo!(),
-        ast::Expression::LogicalNot(e) => todo!(),
+        ast::Expression::LogicalNot(e) => {
+            check_expression(bindings.clone(), e)?;
+            Type::Bool
+        },
     })
 }
 

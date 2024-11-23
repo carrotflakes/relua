@@ -27,26 +27,26 @@ peg::parser!(pub grammar parser() for str {
         { Definition::Variable(Variable { name, type_: t, expr: e }) }
 
     rule statements() -> Vec<Statement>
-        = s:(statement()*) { s }
+        = s:(statement() ** _) { s }
 
     rule statement() -> Statement
-        = _ "return" _ e:expression() _ { Statement::Return(Some(e)) }
-        / _ "let" _ name:identifier() _ t:(":" _ t:type_() _ { t })? "=" _ e:expression() _
+        = "return" _ e:expression() { Statement::Return(Some(e)) }
+        / "let" _ name:identifier() _ t:(":" _ t:type_() _ { t })? "=" _ e:expression()
             { Statement::Let(Variable { name, type_: t, expr: e }) }
-        / _ e:expression() _ { Statement::Expression(e) }
         / if_else()
         / while_loop()
         / assignment()
+        / e:expression() { Statement::Expression(e) }
         / e:binary_op()  { Statement::Expression(e) }
 
     rule if_else() -> Statement
-        = "if" _ e:expression() _ "{"
-        then_body:statements() _ "}" _ "else" _ "{"
-        else_body:statements() _ "}"
-        { Statement::If { condition: e, then: then_body, else_: else_body } }
+        = "if" _ e:expression() _ "{" _
+        then_body:statements() _ "}"
+        else_body:(_ "else" _ "{" _ ss:statements() _ "}" { ss })?
+        { Statement::If { condition: e, then: then_body, else_: else_body.unwrap_or_default() } }
 
     rule while_loop() -> Statement
-        = "while" _ e:expression() _ "{"
+        = "while" _ e:expression() _ "{" _
         loop_body:statements() _ "}"
         { Statement::While { condition: e, body: loop_body } }
 
@@ -202,6 +202,21 @@ fn main() -> {bool, bool, [str]: num} {
 }"#,
 r#"
 let a = {}[1][2]
+"#,
+r#"
+fn main() {
+    if true {
+        return 1
+    }
+    if true {
+        return 2
+    } else {
+        return 3
+    }
+    while true {
+        return 4
+    }
+}
 "#,
     ];
     for program in programs.iter() {

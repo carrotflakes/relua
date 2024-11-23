@@ -52,13 +52,34 @@ fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Re
                 expression(writer, &variable.expr)?;
                 writer.write_str("\n")?;
             }
-            ast::Statement::Assignment { target, e } => todo!(),
+            ast::Statement::Assignment { target, e } => {
+                writer.write_str(target)?;
+                writer.write_str(" = ")?;
+                expression(writer, e)?;
+                writer.write_str("\n")?;
+            }
             ast::Statement::If {
                 condition,
                 then,
                 else_,
-            } => todo!(),
-            ast::Statement::While { condition, body } => todo!(),
+            } => {
+                writer.write_str("if ")?;
+                expression(writer, condition)?;
+                writer.write_str(" then\n")?;
+                statements(writer, then)?;
+                if !else_.is_empty() {
+                    writer.write_str("else\n")?;
+                    statements(writer, else_)?;
+                }
+                writer.write_str("end\n")?;
+            }
+            ast::Statement::While { condition, body } => {
+                writer.write_str("while ")?;
+                expression(writer, condition)?;
+                writer.write_str(" do\n")?;
+                statements(writer, body)?;
+                writer.write_str("end\n")?;
+            }
         }
     }
     Ok(())
@@ -85,10 +106,34 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
                     writer.write_str(")")?;
                     return Ok(());
                 }
+                "__lt" => {
+                    writer.write_str("(")?;
+                    expression(writer, &arguments[0])?;
+                    writer.write_str("<")?;
+                    expression(writer, &arguments[1])?;
+                    writer.write_str(")")?;
+                    return Ok(());
+                }
+                "__le" => {
+                    writer.write_str("(")?;
+                    expression(writer, &arguments[0])?;
+                    writer.write_str("<=")?;
+                    expression(writer, &arguments[1])?;
+                    writer.write_str(")")?;
+                    return Ok(());
+                }
                 "__add" => {
                     writer.write_str("(")?;
                     expression(writer, &arguments[0])?;
                     writer.write_str("+")?;
+                    expression(writer, &arguments[1])?;
+                    writer.write_str(")")?;
+                    return Ok(());
+                }
+                "__sub" => {
+                    writer.write_str("(")?;
+                    expression(writer, &arguments[0])?;
+                    writer.write_str("-")?;
                     expression(writer, &arguments[1])?;
                     writer.write_str(")")?;
                     return Ok(());
@@ -151,7 +196,10 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
         }
         ast::Expression::LogicalAnd(a, b) => todo!(),
         ast::Expression::LogicalOr(a, b) => todo!(),
-        ast::Expression::LogicalNot(e) => todo!(),
+        ast::Expression::LogicalNot(e) => {
+            writer.write_str("not ")?;
+            expression(writer, e)?;
+        }
     }
     Ok(())
 }
