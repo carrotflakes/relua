@@ -1,4 +1,4 @@
-use crate::r#type::Type;
+use crate::r#type::{ConstData, Type};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Definition {
@@ -50,11 +50,10 @@ pub enum Expression {
         arguments: Vec<Expression>,
     },
     Index {
-        array: Box<Expression>,
+        table: Box<Expression>,
         index: Box<Expression>,
     },
-    Tuple(Vec<Expression>),
-    Table(Vec<TableEntry>),
+    Table(Vec<(TableKey, Expression)>),
     Fn(Function),
     LogicalAnd(Box<Expression>, Box<Expression>),
     LogicalOr(Box<Expression>, Box<Expression>),
@@ -62,9 +61,9 @@ pub enum Expression {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum TableEntry {
-    Field(String, Expression),
-    Value(Expression),
+pub enum TableKey {
+    Literal(Literal),
+    Expression(Expression),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -72,4 +71,14 @@ pub enum Literal {
     Number(f64),
     String(String),
     Bool(bool),
+}
+
+impl Literal {
+    pub fn to_const_data(&self) -> ConstData {
+        match self {
+            Literal::Number(n) => ConstData::try_from_f64(*n).unwrap(),
+            Literal::String(s) => ConstData::String(s.clone()),
+            Literal::Bool(b) => ConstData::Bool(*b),
+        }
+    }
 }

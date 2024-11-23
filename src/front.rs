@@ -1,5 +1,5 @@
 use crate::ast::*;
-use crate::r#type::Type;
+use crate::r#type::{ConstData, Type, TypeTable};
 
 // https://docs.rs/peg/latest/peg/
 peg::parser!(pub grammar parser() for str {
@@ -82,16 +82,29 @@ peg::parser!(pub grammar parser() for str {
 
     rule unary_op() -> Expression
         = "(" _ e:expression() _ ")" { e }
-        / "{" _ ts:((_ t:table_entry() _ { t }) ** ",") ","? _ "}" { Expression::Table(ts) }
+        / "{" _ ts:((_ t:table_entry() _ { t }) ** ",") ","? _ "}" {
+            let mut tes = vec![];
+            let mut i = 1;
+            for (k, v) in ts {
+                if let Some(k) = k {
+                    tes.push((k, v));
+                } else {
+                    tes.push((TableKey::Literal(Literal::Number(i as f64)), v));
+                    i += 1;
+                }
+            }
+            Expression::Table(tes)
+        }
         / "!" _ e:expression() { Expression::LogicalNot(Box::new(e)) }
         / f:function() { Expression::Fn(f) }
         / i:identifier() _ "(" args:((_ e:expression() _ {e}) ** ",") ")" { Expression::Call { function: i, arguments: args } }
         / i:identifier() { Expression::Variable(i) }
-        / l:literal() { l }
+        / l:literal() { Expression::Literal(l) }
 
-    rule table_entry() -> TableEntry
-        = k:identifier() _ ":" _ v:expression() { TableEntry::Field(k, v) }
-        / v:expression() { TableEntry::Value(v) }
+    rule table_entry() -> (Option<TableKey>, Expression)
+        = k:literal() _ ":" _ v:expression() { (Some(TableKey::Literal(k)), v) }
+        / k:(k:identifier() _ ":" { TableKey::Literal(Literal::String(k)) })? _ v:expression() { (k, v) }
+        // TODO: TableKey::Expression
 
     rule function() -> Function
         = _ "fn" _
@@ -110,27 +123,46 @@ peg::parser!(pub grammar parser() for str {
     rule keyword() -> ()
         = "fn" / "let"/ "if" / "else" / "while" / "return" / "true" / "false"
 
-    rule literal() -> Expression
-        = n:$(['0'..='9']+ ("." ['0'..='9']*)?) { Expression::Literal(Literal::Number(n.parse().unwrap())) }
-        / "true" { Expression::Literal(Literal::Bool(true)) }
-        / "false" { Expression::Literal(Literal::Bool(false)) }
+    rule literal() -> Literal
+        = n:$(['0'..='9']+ ("." ['0'..='9']*)?) { Literal::Number(n.parse().unwrap()) }
+        / "true" { Literal::Bool(true) }
+        / "false" { Literal::Bool(false) }
         // / "&" i:identifier() { Expression::GlobalDataAddr(i) }
 
     rule type_() -> Type = precedence!{
         a:@ _ "|" _ b:(@) { Type::Union(vec![a, b]).normalize() }
         --
+        // TODO: {, [str]: num}
+        "{" _ cs:((_ t:type_table_entry() _ { t }) ** ",") ","? ts:((_ "[" k:$("num" / "str" / "bool") "]" _ ":" _ v:type_() _ { (k, v) }) ** ",") ","? _ "}"
+        {
+            let mut tes = vec![];
+            let mut i = 1;
+            for (k, v) in cs {
+                if let Some(k) = k {
+                    tes.push((k.to_const_data(), v));
+                } else {
+                    tes.push((ConstData::try_from_f64(i as f64).unwrap(), v));
+                    i += 1;
+                }
+            }
+            let number = ts.iter().find(|(k, _)| *k == "num").map(|(_, v)| Box::new(v.clone()));
+            let string = ts.iter().find(|(k, _)| *k == "str").map(|(_, v)| Box::new(v.clone()));
+            let bool = ts.iter().find(|(k, _)| *k == "bool").map(|(_, v)| Box::new(v.clone()));
+            Type::Table(TypeTable { consts: tes, number, string, bool })
+        }
         a:type_atom() { a }
     }
+
+    rule type_table_entry() -> (Option<Literal>, Type)
+        = k:(k:literal() _ ":" { k })? _ v:type_() { (k, v) }
 
     rule type_atom() -> Type
         = "num" { Type::Number }
         / "str" { Type::String }
         / "bool" { Type::Bool }
-        / "table" { Type::Table }
         / "()" { Type::Nil }
         / "unknown" { Type::Unknown }
-        / "(" _ t:type_() _ "," _ ts:(type_() ** ",") _ ")" { Type::Tuple(vec![vec![t], ts].concat()) }
-        / "[" _ t:type_() _ "]" { Type::Array(Box::new(t)) }
+        / l:literal() { Type::Const(l.to_const_data()) }
 
     rule _() =  quiet!{[' ' | '\t' | '\n']*}
 });
@@ -159,10 +191,12 @@ fn main(a: num) -> num {
 }
 "#,
         r#"
-fn main() -> table {
+fn main() -> {bool, bool, [str]: num} {
     return {
         a: 1,
         b: 2,
+        true,
+        false,
     }
 }"#,
     ];

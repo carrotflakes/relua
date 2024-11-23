@@ -113,24 +113,43 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
             }
             writer.write_str(")")?;
         }
-        ast::Expression::Index { array, index } => {
+        ast::Expression::Index {
+            table: array,
+            index,
+        } => {
             expression(writer, array)?;
             writer.write_str("[")?;
             expression(writer, index)?;
             writer.write_str("]")?;
         }
-        ast::Expression::Tuple(vec) => {
+        ast::Expression::Fn(function) => todo!(),
+        ast::Expression::Table(vec) => {
             writer.write_str("{")?;
-            for (i, expr) in vec.iter().enumerate() {
+            for (i, (key, value)) in vec.iter().enumerate() {
                 if i > 0 {
                     writer.write_str(", ")?;
                 }
-                expression(writer, expr)?;
+                match key {
+                    ast::TableKey::Literal(l) => {
+                        if let Some(name) = literal_to_name(l) {
+                            writer.write_str(&name)?;
+                        } else {
+                            writer.write_str("[")?;
+                            literal(writer, l)?;
+                            writer.write_str("]")?;
+                        }
+                    }
+                    ast::TableKey::Expression(e) => {
+                            writer.write_str("[")?;
+                            expression(writer, e)?;
+                            writer.write_str("]")?;
+                    }
+                }
+                writer.write_str(" = ")?;
+                expression(writer, value)?;
             }
             writer.write_str("}")?;
         }
-        ast::Expression::Fn(function) => todo!(),
-        ast::Expression::Table(vec) => todo!(),
         ast::Expression::LogicalAnd(a, b) => todo!(),
         ast::Expression::LogicalOr(a, b) => todo!(),
         ast::Expression::LogicalNot(e) => todo!(),
@@ -151,4 +170,19 @@ fn literal(writer: &mut impl Write, literal: &ast::Literal) -> std::fmt::Result 
         }
     }
     Ok(())
+}
+
+fn literal_to_name(literal: &ast::Literal) -> Option<String> {
+    match literal {
+        ast::Literal::String(s) => {
+            if s.chars().next().map(|c| c.is_ascii_digit()) != Some(false) {
+                return None;
+            }
+            if s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                return Some(s.clone());
+            }
+            None
+        }
+        _ => None,
+    }
 }
