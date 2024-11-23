@@ -60,8 +60,9 @@ peg::parser!(pub grammar parser() for str {
         = binary_op()
 
     rule binary_op() -> Expression = precedence!{
-        a:(@) _ "&&" _ b:@ { Expression::LogicalAnd(Box::new(a), Box::new(b)) }
         a:(@) _ "||" _ b:@ { Expression::LogicalOr(Box::new(a), Box::new(b)) }
+        --
+        a:(@) _ "&&" _ b:@ { Expression::LogicalAnd(Box::new(a), Box::new(b)) }
         --
         a:@ _ "==" _ b:(@) { Expression::Call { function: "__eq".to_owned(), arguments: vec![a, b] } }
         a:@ _ "!=" _ b:(@) { Expression::LogicalNot(Box::new(Expression::Call { function: "__eq".to_owned(), arguments: vec![a, b] })) }
