@@ -130,7 +130,7 @@ fn check_expression(
                     }
                     return Ok(Type::Bool);
                 }
-                "__add" | "__sub" | "__mul" => {
+                "__add" | "__sub" | "__mul" | "__div" | "__mod" => {
                     if arguments.len() != 2 {
                         return Err("Argument count mismatch".to_string());
                     }

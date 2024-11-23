@@ -97,56 +97,24 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
             function,
             arguments,
         } => {
-            match function.as_str() {
-                "__eq" => {
-                    writer.write_str("(")?;
-                    expression(writer, &arguments[0])?;
-                    writer.write_str("==")?;
-                    expression(writer, &arguments[1])?;
-                    writer.write_str(")")?;
-                    return Ok(());
-                }
-                "__lt" => {
-                    writer.write_str("(")?;
-                    expression(writer, &arguments[0])?;
-                    writer.write_str("<")?;
-                    expression(writer, &arguments[1])?;
-                    writer.write_str(")")?;
-                    return Ok(());
-                }
-                "__le" => {
-                    writer.write_str("(")?;
-                    expression(writer, &arguments[0])?;
-                    writer.write_str("<=")?;
-                    expression(writer, &arguments[1])?;
-                    writer.write_str(")")?;
-                    return Ok(());
-                }
-                "__add" => {
-                    writer.write_str("(")?;
-                    expression(writer, &arguments[0])?;
-                    writer.write_str("+")?;
-                    expression(writer, &arguments[1])?;
-                    writer.write_str(")")?;
-                    return Ok(());
-                }
-                "__sub" => {
-                    writer.write_str("(")?;
-                    expression(writer, &arguments[0])?;
-                    writer.write_str("-")?;
-                    expression(writer, &arguments[1])?;
-                    writer.write_str(")")?;
-                    return Ok(());
-                }
-                "__mul" => {
-                    writer.write_str("(")?;
-                    expression(writer, &arguments[0])?;
-                    writer.write_str("*")?;
-                    expression(writer, &arguments[1])?;
-                    writer.write_str(")")?;
-                    return Ok(());
-                }
-                _ => {}
+            let op = match function.as_str() {
+                "__eq" => Some("=="),
+                "__lt" => Some("<"),
+                "__le" => Some("<="),
+                "__add" => Some("+"),
+                "__sub" => Some("-"),
+                "__mul" => Some("*"),
+                "__div" => Some("/"),
+                "__mod" => Some("%"),
+                _ => None,
+            };
+            if let Some(op) = op {
+                writer.write_str("(")?;
+                expression(writer, &arguments[0])?;
+                writer.write_str(op)?;
+                expression(writer, &arguments[1])?;
+                writer.write_str(")")?;
+                return Ok(());
             }
             writer.write_str(function)?;
             writer.write_str("(")?;
