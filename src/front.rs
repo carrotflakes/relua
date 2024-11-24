@@ -3,31 +3,22 @@ use crate::r#type::{ConstData, Type, TypeTable};
 
 // https://docs.rs/peg/latest/peg/
 peg::parser!(pub grammar parser() for str {
-    pub rule program() -> Vec<Definition>
-        = _ defs:(definition() ** _) _ { defs }
+    pub rule program() -> Vec<Statement>
+        = statements()
 
-    rule definition() -> Definition
-        = def_function()
-        / def_var()
-        / e:expression() _ { Definition::Expression(e) }
-
-    rule def_function() -> Definition
-        = _ "fn" _ name:identifier() _
+    rule def_function() -> Statement
+        = "fn" _ name:identifier() _
         "(" params:((_ i:identifier() _ ":" _ t:type_() {(i, t)}) ** ",") ")" _
         rt:(
             "->" _ t:type_() _ { t }
         )?
         "{" _
         stmts:statements()
-        _ "}" _
-        { Definition::Function {name, function: Function { parameters: params, return_type: rt, body: stmts } } }
-
-    rule def_var() -> Definition
-        = _ "let" _ name:identifier() _ t:(":" _ t:type_() _ { t })? "=" _ e:expression() _
-        { Definition::Variable(Variable { name, type_: t, expr: e }) }
+        _ "}"
+        { Statement::Fn {name, function: Function { parameters: params, return_type: rt, body: stmts } } }
 
     rule statements() -> Vec<Statement>
-        = s:(statement() ** _) { s }
+        = _ s:(statement() ** _) _ { s }
 
     rule statement() -> Statement
         = "return" _ e:expression() { Statement::Return(Some(e)) }
@@ -36,8 +27,8 @@ peg::parser!(pub grammar parser() for str {
         / if_else()
         / while_loop()
         / assignment()
+        / def_function()
         / e:expression() { Statement::Expression(e) }
-        / e:binary_op()  { Statement::Expression(e) }
 
     rule if_else() -> Statement
         = "if" _ e:expression() _ "{" _
@@ -124,14 +115,14 @@ peg::parser!(pub grammar parser() for str {
         // TODO: TableKey::Expression
 
     rule function() -> Function
-        = _ "fn" _
+        = "fn" _
         "(" params:((_ i:identifier() _ ":" _ t:type_() {(i, t)}) ** ",") ")" _
         rt:(
             "->" _ t:type_() _ { t }
         )?
         "{" _
         stmts:statements()
-        _ "}" _
+        _ "}"
         { Function { parameters: params, return_type: rt, body: stmts } }
 
     rule identifier() -> String

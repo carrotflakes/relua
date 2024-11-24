@@ -7,7 +7,7 @@ pub mod type_check;
 pub fn compile(src: &str) -> Result<String, String> {
     let prog = front::parser::program(src).map_err(|e| e.to_string())?;
 
-    type_check::check_definitions(&prog)?;
+    type_check::check_program(&prog)?;
 
     let mut res = String::new();
     lua::write_lua(&mut res, &prog).map_err(|e| e.to_string())?;
@@ -40,23 +40,24 @@ let a: {f: (num) -> num} = {
         return a * 2
     }
 }"#,
-r#"
+        r#"
 fn f() -> () {
     f()
 }"#,
-r#"
+        r#"
 fn f() {
     len!{1, 2, 3}
 }"#,
     ];
     for src in &srcs {
-        let defs = front::parser::program(src).unwrap();
-        assert_eq!(type_check::check_definitions(&defs), Ok(()));
+        let prog = front::parser::program(src).unwrap();
+        let res = type_check::check_program(&prog);
+        gilder::assert_golden!(format!("{:?}", res));
     }
     for src in &srcs {
-        let defs = front::parser::program(src).unwrap();
+        let prog = front::parser::program(src).unwrap();
         let mut res = String::new();
-        lua::write_lua(&mut res, &defs).unwrap();
+        lua::write_lua(&mut res, &prog).unwrap();
         gilder::assert_golden!(res);
     }
 
@@ -70,8 +71,8 @@ fn f() {
         r#"let a: {1, [str]: num} = {1, 2, 3}"#,
     ];
     for src in &srcs {
-        let defs = front::parser::program(src).unwrap();
-        let res = type_check::check_definitions(&defs);
+        let prog = front::parser::program(src).unwrap();
+        let res = type_check::check_program(&prog);
         gilder::assert_golden!(format!("{:?}", res));
     }
 }

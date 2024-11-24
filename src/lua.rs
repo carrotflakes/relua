@@ -2,37 +2,8 @@ use std::{fmt::Write, ops::Deref};
 
 use crate::ast::{self, Expression, Literal};
 
-pub fn write_lua(writer: &mut impl Write, defs: &[ast::Definition]) -> std::fmt::Result {
-    definitions(writer, defs)
-}
-
-fn definitions(writer: &mut impl Write, defs: &[ast::Definition]) -> std::fmt::Result {
-    for def in defs {
-        match def {
-            ast::Definition::Function { name, function } => {
-                writer.write_str(&format!("function {}(", name))?;
-                for (i, param) in function.parameters.iter().enumerate() {
-                    if i > 0 {
-                        writer.write_str(", ")?;
-                    }
-                    writer.write_str(&format!("{}", &param.0))?;
-                }
-                writer.write_str(")\n")?;
-                statements(writer, &function.body)?;
-                writer.write_str("end\n")?;
-            }
-            ast::Definition::Variable(variable) => {
-                writer.write_str(&format!("local {} = ", variable.name))?;
-                expression(writer, &variable.expr)?;
-                writer.write_str("\n")?;
-            }
-            ast::Definition::Expression(e) => {
-                expression(writer, e)?;
-                writer.write_str("\n")?;
-            }
-        }
-    }
-    Ok(())
+pub fn write_lua(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Result {
+    statements(writer, stmts)
 }
 
 fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Result {
@@ -50,6 +21,18 @@ fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Re
             ast::Statement::Expression(expr) => {
                 expression(writer, expr)?;
                 writer.write_str("\n")?;
+            }
+            ast::Statement::Fn { name, function } => {
+                writer.write_str(&format!("local function {}(", name))?;
+                for (i, param) in function.parameters.iter().enumerate() {
+                    if i > 0 {
+                        writer.write_str(", ")?;
+                    }
+                    writer.write_str(&param.0)?;
+                }
+                writer.write_str(")\n")?;
+                statements(writer, &function.body)?;
+                writer.write_str("end\n")?;
             }
             ast::Statement::Let(variable) => {
                 writer.write_str(&format!("local {} = ", variable.name))?;

@@ -9,8 +9,8 @@ enum ReturnType {
     Infer(Vec<Type>),
 }
 
-pub fn check_definitions(defs: &[ast::Definition]) -> Result<(), String> {
-    let mut bindings: HashMap<String, Type> = vec![
+pub fn check_program(stmts: &[ast::Statement]) -> Result<Type, String> {
+    let bindings: HashMap<String, Type> = vec![
         (
             "print",
             Type::Function(vec![Type::Unknown], Box::new(Type::Nil)),
@@ -29,42 +29,16 @@ pub fn check_definitions(defs: &[ast::Definition]) -> Result<(), String> {
     .map(|(name, value)| (name.to_owned(), value))
     .collect();
 
-    for def in defs.iter() {
-        match def {
-            ast::Definition::Function { name, function } => {
-                // Add function to bindings to allow recursion
-                bindings.insert(
-                    name.clone(),
-                    Type::Function(
-                        function.parameters.iter().map(|(_, t)| t.clone()).collect(),
-                        Box::new(function.return_type.clone().unwrap_or(Type::Unknown)),
-                    ),
-                );
+    let mut return_type = ReturnType::Infer(vec![]);
 
-                let ret_type = check_function(bindings.clone(), function)?;
-                bindings.insert(
-                    name.clone(),
-                    Type::Function(
-                        function.parameters.iter().map(|(_, t)| t.clone()).collect(),
-                        Box::new(ret_type),
-                    ),
-                );
-            }
-            ast::Definition::Variable(var) => {
-                let actual = check_expression(bindings.clone(), &var.expr)?;
-                if let Some(expect) = &var.type_ {
-                    type_match(expect, &actual)?;
-                    bindings.insert(var.name.clone(), expect.clone());
-                } else {
-                    bindings.insert(var.name.clone(), actual);
-                }
-            }
-            ast::Definition::Expression(expr) => {
-                check_expression(bindings.clone(), expr)?;
-            }
-        }
-    }
-    Ok(())
+    check_statements(bindings, stmts, &mut return_type)?;
+
+    let return_type = match return_type {
+        ReturnType::Fixed(t) => t,
+        ReturnType::Infer(types) => Type::from_types(types).unwrap_or(Type::Nil),
+    };
+
+    Ok(return_type)
 }
 
 fn check_function(
@@ -99,6 +73,25 @@ fn check_statements(
         match stmt {
             ast::Statement::Expression(expression) => {
                 check_expression(bindings.clone(), expression)?;
+            }
+            ast::Statement::Fn { name, function } => {
+                // Add function to bindings to allow recursion
+                bindings.insert(
+                    name.clone(),
+                    Type::Function(
+                        function.parameters.iter().map(|(_, t)| t.clone()).collect(),
+                        Box::new(function.return_type.clone().unwrap_or(Type::Unknown)),
+                    ),
+                );
+
+                let ret_type = check_function(bindings.clone(), function)?;
+                bindings.insert(
+                    name.clone(),
+                    Type::Function(
+                        function.parameters.iter().map(|(_, t)| t.clone()).collect(),
+                        Box::new(ret_type),
+                    ),
+                );
             }
             ast::Statement::Let(variable) => {
                 let actual = check_expression(bindings.clone(), &variable.expr)?;

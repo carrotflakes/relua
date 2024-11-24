@@ -1,30 +1,13 @@
 use crate::r#type::{ConstData, Type};
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Definition {
-    Function { name: String, function: Function },
-    Variable(Variable),
-    Expression(Expression),
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Function {
-    pub parameters: Vec<(String, Type)>,
-    pub return_type: Option<Type>,
-    pub body: Vec<Statement>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Variable {
-    pub name: String,
-    pub type_: Option<Type>,
-    pub expr: Expression,
-}
-
-#[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Expression(Expression),
     Let(Variable),
+    Fn {
+        name: String,
+        function: Function,
+    },
     // TODO: multiple assignment
     Assignment {
         target: LValue,
@@ -59,6 +42,20 @@ pub enum Expression {
     LogicalAnd(Box<Expression>, Box<Expression>),
     LogicalOr(Box<Expression>, Box<Expression>),
     LogicalNot(Box<Expression>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Function {
+    pub parameters: Vec<(String, Type)>,
+    pub return_type: Option<Type>,
+    pub body: Vec<Statement>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Variable {
+    pub name: String,
+    pub type_: Option<Type>,
+    pub expr: Expression,
 }
 
 #[derive(Debug, Clone, PartialEq)]
