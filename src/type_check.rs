@@ -109,7 +109,7 @@ fn check_statements(
                     bindings.insert(variable.name.clone(), actual);
                 }
             }
-            ast::Statement::Assignment { target, e } => {
+            ast::Statement::Assignment { target, expr } => {
                 let var_type = match target {
                     ast::LValue::Variable(name) => bindings
                         .get(name)
@@ -124,7 +124,7 @@ fn check_statements(
                         check_table(&table_type, &index_type)?
                     }
                 };
-                let actual = check_expression(bindings.clone(), e)?;
+                let actual = check_expression(bindings.clone(), expr)?;
                 type_match(&var_type, &actual)?;
             }
             ast::Statement::If {

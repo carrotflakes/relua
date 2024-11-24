@@ -53,13 +53,13 @@ peg::parser!(pub grammar parser() for str {
     rule assignment() -> Statement
         = i:identifier() _ "=" _ e:expression() {Statement::Assignment {
             target: LValue::Variable(i),
-            e,
+            expr: e,
         }}
         / t:expression() _ "=" _ e:expression() {?
             if let Expression::Index { table, index } = t {
                 Ok(Statement::Assignment {
                     target: LValue::Index(table, index),
-                    e,
+                    expr: e,
                 })
             } else {
                 Err("expected index expression")
@@ -145,7 +145,6 @@ peg::parser!(pub grammar parser() for str {
         / "true" { Literal::Bool(true) }
         / "false" { Literal::Bool(false) }
         / s:string() { Literal::String(s) }
-        // / "&" i:identifier() { Expression::GlobalDataAddr(i) }
 
     rule type_() -> Type = precedence!{
         a:@ _ "|" _ b:(@) { Type::Union(vec![a, b]).normalize() }

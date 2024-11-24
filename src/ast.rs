@@ -28,7 +28,7 @@ pub enum Statement {
     // TODO: multiple assignment
     Assignment {
         target: LValue,
-        e: Expression,
+        expr: Expression,
     },
     If {
         condition: Expression,

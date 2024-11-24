@@ -56,7 +56,7 @@ fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Re
                 expression(writer, &variable.expr)?;
                 writer.write_str("\n")?;
             }
-            ast::Statement::Assignment { target, e } => {
+            ast::Statement::Assignment { target, expr } => {
                 match target {
                     ast::LValue::Variable(v) => {
                         writer.write_str(v)?;
@@ -69,7 +69,7 @@ fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Re
                     }
                 }
                 writer.write_str(" = ")?;
-                expression(writer, e)?;
+                expression(writer, expr)?;
                 writer.write_str("\n")?;
             }
             ast::Statement::If {
