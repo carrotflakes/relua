@@ -86,7 +86,10 @@ peg::parser!(pub grammar parser() for str {
         --
         a:(@) _ "*" _ b:@ { Expression::Call { function: function_expr("__mul"), arguments: vec![a, b] } }
         a:(@) _ "/" _ b:@ { Expression::Call { function: function_expr("__div"), arguments: vec![a, b] } }
+        a:(@) _ "//" _ b:@ { Expression::Call { function: function_expr("__idiv"), arguments: vec![a, b] } }
         a:(@) _ "%" _ b:@ { Expression::Call { function: function_expr("__mod"), arguments: vec![a, b] } }
+        --
+        a:(@) _ "^" _ b:@ { Expression::Call { function: function_expr("__pow"), arguments: vec![a, b] } }
         --
         a:(@) _ "[" _ b:expression() _ "]" { Expression::Index { table: Box::new(a), index: Box::new(b) } }
         a:(@) _ "(" _ args:((_ e:expression() _ {e}) ** ",") ")" { Expression::Call { function: Box::new(a), arguments: args } }

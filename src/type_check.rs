@@ -185,7 +185,7 @@ fn check_expression(
                         "__lt" | "__le" => {
                             Type::Function(vec![Type::Number, Type::Number], Box::new(Type::Bool))
                         }
-                        "__add" | "__sub" | "__mul" | "__div" | "__mod" => {
+                        "__add" | "__sub" | "__mul" | "__div" | "__idiv" | "__mod" | "__pow" => {
                             Type::Function(vec![Type::Number, Type::Number], Box::new(Type::Number))
                         }
                         _ => check_expression(bindings.clone(), function)?,

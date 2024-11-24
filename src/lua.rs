@@ -120,7 +120,9 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
                     "__sub" => Some("-"),
                     "__mul" => Some("*"),
                     "__div" => Some("/"),
+                    "__idiv" => Some("//"),
                     "__mod" => Some("%"),
+                    "__pow" => Some("^"),
                     _ => None,
                 }
             } else {
