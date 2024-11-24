@@ -9,26 +9,10 @@ enum ReturnType {
     Infer(Vec<Type>),
 }
 
-pub fn check_program(stmts: &[ast::Statement]) -> Result<Type, String> {
-    let bindings: HashMap<String, Type> = vec![
-        (
-            "print",
-            Type::Function(vec![Type::Unknown], Box::new(Type::Nil)),
-        ),
-        (
-            "math",
-            Type::Table(TypeTable {
-                consts: vec![],
-                number: None,
-                string: Some(Box::new(Type::Any)),
-                bool: None,
-            }),
-        ),
-    ]
-    .into_iter()
-    .map(|(name, value)| (name.to_owned(), value))
-    .collect();
-
+pub fn check_program(
+    bindings: HashMap<String, Type>,
+    stmts: &[ast::Statement],
+) -> Result<Type, String> {
     let mut return_type = ReturnType::Infer(vec![]);
 
     check_statements(bindings, stmts, &mut return_type)?;

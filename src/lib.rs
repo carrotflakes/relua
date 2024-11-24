@@ -4,14 +4,53 @@ pub mod lua;
 pub mod r#type;
 pub mod type_check;
 
+use std::collections::HashMap;
+
 pub fn compile(src: &str) -> Result<String, String> {
     let prog = front::parser::program(src).map_err(|e| e.to_string())?;
 
-    type_check::check_program(&prog)?;
+    type_check::check_program(default_bindings(), &prog)?;
 
     let mut res = String::new();
     lua::write_lua(&mut res, &prog).map_err(|e| e.to_string())?;
     Ok(res)
+}
+
+pub fn compile_with_bindings(
+    bindings: HashMap<String, r#type::Type>,
+    src: &str,
+) -> Result<String, String> {
+    let prog = front::parser::program(src).map_err(|e| e.to_string())?;
+
+    type_check::check_program(bindings, &prog)?;
+
+    let mut res = String::new();
+    lua::write_lua(&mut res, &prog).map_err(|e| e.to_string())?;
+    Ok(res)
+}
+
+pub fn default_bindings() -> HashMap<String, r#type::Type> {
+    use r#type::{Type, TypeTable};
+
+    let bindings: HashMap<String, Type> = vec![
+        (
+            "print",
+            Type::Function(vec![Type::Unknown], Box::new(Type::Nil)),
+        ),
+        (
+            "math",
+            Type::Table(TypeTable {
+                consts: vec![],
+                number: None,
+                string: Some(Box::new(Type::Any)),
+                bool: None,
+            }),
+        ),
+    ]
+    .into_iter()
+    .map(|(name, value)| (name.to_owned(), value))
+    .collect();
+    bindings
 }
 
 #[test]
@@ -51,7 +90,7 @@ fn f() {
     ];
     for src in &srcs {
         let prog = front::parser::program(src).unwrap();
-        let res = type_check::check_program(&prog);
+        let res = type_check::check_program(default_bindings(), &prog);
         gilder::assert_golden!(format!("{:?}", res));
     }
     for src in &srcs {
@@ -72,7 +111,7 @@ fn f() {
     ];
     for src in &srcs {
         let prog = front::parser::program(src).unwrap();
-        let res = type_check::check_program(&prog);
+        let res = type_check::check_program(default_bindings(), &prog);
         gilder::assert_golden!(format!("{:?}", res));
     }
 }
