@@ -61,6 +61,7 @@ impl Type {
     }
 
     pub fn normalize(&self) -> Type {
+        // TODO: Prefer more abstract types over specific types, e.g., num over 1, any over num
         match self {
             Type::Union(types) => {
                 let mut types = types

@@ -44,6 +44,10 @@ r#"
 fn f() -> () {
     f()
 }"#,
+r#"
+fn f() {
+    len!{1, 2, 3}
+}"#,
     ];
     for src in &srcs {
         let defs = front::parser::program(src).unwrap();

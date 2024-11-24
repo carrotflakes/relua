@@ -113,6 +113,11 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
         } => {
             let op = if let Expression::Literal(Literal::String(f)) = function.deref() {
                 match f.as_str() {
+                    "__len" => {
+                        writer.write_str("#")?;
+                        expression(writer, &arguments[0])?;
+                        return Ok(());
+                    }
                     "__eq" => Some("=="),
                     "__lt" => Some("<"),
                     "__le" => Some("<="),
