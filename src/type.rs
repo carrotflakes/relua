@@ -1,16 +1,19 @@
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Type {
+    /// Any aka Top
+    Any,
+    Unknown,
+
+    Union(Vec<Type>),
+
     Number,
     String,
     Bool,
     Nil,
     Table(TypeTable),
     Function(Vec<Type>, Box<Type>),
-    /// aka Top
-    Unknown,
-    Any,
+
     Const(ConstData),
-    Union(Vec<Type>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -35,35 +38,37 @@ pub struct F64(f64);
 impl Type {
     pub fn include(&self, other: &Type) -> bool {
         match (self, other) {
+            (l @ Type::Union(_), Type::Union(r)) => r.iter().all(|r| l.include(r)),
+            (Type::Union(l), r) => l.iter().any(|t| t.include(r)),
+
             (Type::Any, _) => true,
             (_, Type::Any) => true,
+            (Type::Unknown, _) => true,
+
             (Type::Const(l), Type::Const(r)) => l == r,
             (Type::Const(_), _) => false,
             (l, Type::Const(cd)) => l.include(&cd.r#type()),
+
             (Type::Number, Type::Number) => true,
             (Type::Number, _) => false,
             (Type::String, Type::String) => true,
             (Type::String, _) => false,
             (Type::Bool, Type::Bool) => true,
             (Type::Bool, _) => false,
+            (Type::Nil, Type::Nil) => true,
+            (Type::Nil, _) => false,
             (Type::Table(l), Type::Table(r)) => l.include(r),
             (Type::Table(_), _) => false,
             (Type::Function(l_ps, l_ret), Type::Function(r_ps, r_ret)) => {
-                l_ps.len() == r_ps.len()
+                l_ps.len() <= r_ps.len()
                     && l_ps.iter().zip(r_ps.iter()).all(|(l, r)| l.include(r))
                     && l_ret.include(r_ret)
             }
             (Type::Function(_, _), _) => false,
-            (Type::Nil, Type::Nil) => true,
-            (Type::Nil, _) => false,
-            (Type::Unknown, _) => true,
-            (l @ Type::Union(_), Type::Union(r)) => r.iter().all(|r| l.include(r)),
-            (Type::Union(l), r) => l.iter().any(|t| t.include(r)),
         }
     }
 
     pub fn normalize(&self) -> Type {
-        // TODO: Prefer more abstract types over specific types, e.g., num over 1, any over num
         match self {
             Type::Union(types) => {
                 let mut types = types
@@ -74,7 +79,15 @@ impl Type {
                     })
                     .collect::<Vec<_>>();
                 types.sort();
-                types.dedup();
+
+                for i in 0..types.len() {
+                    for j in ((i + 1)..types.len()).rev() {
+                        if types[i].include(&types[j]) {
+                            types.remove(j);
+                        }
+                    }
+                }
+
                 if types.len() == 1 {
                     types.pop().unwrap()
                 } else {
@@ -90,23 +103,13 @@ impl Type {
         }
     }
 
-    pub fn from_types(types: Vec<Type>) -> Option<Type> {
-        let mut types = types
-            .into_iter()
-            .flat_map(|t| match t {
-                Type::Union(ts) => ts.into_iter().collect::<Vec<_>>(),
-                t => vec![t],
-            })
-            .collect::<Vec<_>>();
-        types.sort();
-        types.dedup();
-
+    pub fn from_types(mut types: Vec<Type>) -> Option<Type> {
         if types.is_empty() {
             None
         } else if types.len() == 1 {
             Some(types.pop().unwrap())
         } else {
-            Some(Type::Union(types))
+            Some(Type::Union(types).normalize())
         }
     }
 }
@@ -301,4 +304,14 @@ fn test() {
         Type::Union(vec![Type::String, Type::Number, Type::String, Type::Number]),
     ]);
     assert_eq!(t.normalize(), Type::Union(vec![Type::Number, Type::String]));
+
+    let t = Type::Union(vec![
+        Type::Number,
+        Type::Union(vec![Type::String, Type::Number, Type::String, Type::Number]),
+        Type::Any,
+    ]);
+    assert_eq!(t.normalize(), Type::Any);
+
+    let t = Type::Union(vec![Type::Unknown, Type::String, Type::Any]);
+    assert_eq!(t.normalize(), Type::Any);
 }
