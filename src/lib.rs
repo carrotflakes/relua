@@ -48,6 +48,61 @@ pub fn default_bindings() -> HashMap<String, r#type::Type> {
                 function: None,
             }),
         ),
+        (
+            "table",
+            Type::Table(TypeTable {
+                consts: vec![],
+                number: None,
+                string: Some(Box::new(Type::Any)),
+                bool: None,
+                table: None,
+                function: None,
+            }),
+        ),
+        (
+            "string",
+            Type::Table(TypeTable {
+                consts: vec![],
+                number: None,
+                string: Some(Box::new(Type::Any)),
+                bool: None,
+                table: None,
+                function: None,
+            }),
+        ),
+        (
+            "io",
+            Type::Table(TypeTable {
+                consts: vec![],
+                number: None,
+                string: Some(Box::new(Type::Any)),
+                bool: None,
+                table: None,
+                function: None,
+            }),
+        ),
+        (
+            "os",
+            Type::Table(TypeTable {
+                consts: vec![],
+                number: None,
+                string: Some(Box::new(Type::Any)),
+                bool: None,
+                table: None,
+                function: None,
+            }),
+        ),
+        (
+            "debug",
+            Type::Table(TypeTable {
+                consts: vec![],
+                number: None,
+                string: Some(Box::new(Type::Any)),
+                bool: None,
+                table: None,
+                function: None,
+            }),
+        ),
     ]
     .into_iter()
     .map(|(name, value)| (name.to_owned(), value))
@@ -89,15 +144,15 @@ fn f() -> () {
 fn f() {
     len!{1, 2, 3}
 }"#,
-r#"
+        r#"
 let t: {[table]: num, [fn]: str} = {}
 t[{1, 2}] = 3
 t[fn() -> () {}] = "a"
 "#,
-r#"
+        r#"
 {1: "1", [2]: "2", ["3"]: "3"}
 "#,
-r#"
+        r#"
 let f: (num) -> () = fn(a: num, b: num) -> () {}
 let f: (num, num | ()) -> () = fn(a: num) -> () {}
 "#,
@@ -122,7 +177,7 @@ let f: (num, num | ()) -> () = fn(a: num) -> () {}
         r#"let a: {1, [num]: num} = {1, 2, 3}"#,
         r#"let a: {1, [num]: str} = {1, 2, 3}"#,
         r#"let a: {1, [str]: num} = {1, 2, 3}"#,
-        r#"let f: (num, num) -> () = fn(a: num) -> () {}"#
+        r#"let f: (num, num) -> () = fn(a: num) -> () {}"#,
     ];
     for src in &srcs {
         let prog = front::parser::program(src).unwrap();
