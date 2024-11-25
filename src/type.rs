@@ -61,8 +61,9 @@ impl Type {
             (Type::Table(l), Type::Table(r)) => l.include(r),
             (Type::Table(_), _) => false,
             (Type::Function(l_ps, l_ret), Type::Function(r_ps, r_ret)) => {
-                l_ps.len() <= r_ps.len()
-                    && l_ps.iter().zip(r_ps.iter()).all(|(l, r)| l.include(r))
+                l_ps.iter()
+                    .zip(r_ps.iter().chain(vec![Type::Nil].iter().cycle()))
+                    .all(|(l, r)| l.include(r))
                     && l_ret.include(r_ret)
             }
             (Type::Function(_, _), _) => false,

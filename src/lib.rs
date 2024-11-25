@@ -97,6 +97,10 @@ t[fn() -> () {}] = "a"
 r#"
 {1: "1", [2]: "2", ["3"]: "3"}
 "#,
+r#"
+let f: (num) -> () = fn(a: num, b: num) -> () {}
+let f: (num, num | ()) -> () = fn(a: num) -> () {}
+"#,
     ];
     for src in &srcs {
         let prog = front::parser::program(src).unwrap();
@@ -118,6 +122,7 @@ r#"
         r#"let a: {1, [num]: num} = {1, 2, 3}"#,
         r#"let a: {1, [num]: str} = {1, 2, 3}"#,
         r#"let a: {1, [str]: num} = {1, 2, 3}"#,
+        r#"let f: (num, num) -> () = fn(a: num) -> () {}"#
     ];
     for src in &srcs {
         let prog = front::parser::program(src).unwrap();
