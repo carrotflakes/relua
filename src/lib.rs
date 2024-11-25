@@ -44,6 +44,7 @@ pub fn default_bindings() -> HashMap<String, r#type::Type> {
                 number: None,
                 string: Some(Box::new(Type::Any)),
                 bool: None,
+                table: None,
             }),
         ),
     ]
@@ -87,6 +88,10 @@ fn f() -> () {
 fn f() {
     len!{1, 2, 3}
 }"#,
+r#"
+let t: {[table]: num} = {}
+t[{1, 2}] = 3
+"#,
     ];
     for src in &srcs {
         let prog = front::parser::program(src).unwrap();

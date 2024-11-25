@@ -215,6 +215,7 @@ fn check_expression(
             let mut number = vec![];
             let mut string = vec![];
             let mut bool = vec![];
+            let mut table = vec![];
 
             for (key, value) in vec {
                 let value_type = check_expression(bindings.clone(), value)?;
@@ -229,6 +230,7 @@ fn check_expression(
                             Type::String => string.push(value_type),
                             Type::Bool => bool.push(value_type),
                             Type::Const(const_data) => consts.push((const_data, value_type)),
+                            Type::Table(_) => table.push(value_type),
                             t => return Err(format!("Invalid table key type: {}", t)),
                         }
                     }
@@ -240,6 +242,7 @@ fn check_expression(
                 number: Type::from_types(number).map(Box::new),
                 string: Type::from_types(string).map(Box::new),
                 bool: Type::from_types(bool).map(Box::new),
+                table: Type::from_types(table).map(Box::new),
             })
         }
         ast::Expression::LogicalAnd(a, b) => {

@@ -142,7 +142,7 @@ peg::parser!(pub grammar parser() for str {
         a:@ _ "|" _ b:(@) { Type::Union(vec![a, b]).normalize() }
         --
         // TODO: {, [str]: num}
-        "{" _ cs:((_ t:type_table_entry() _ { t }) ** ",") ","? ts:((_ "[" k:$("num" / "str" / "bool") "]" _ ":" _ v:type_() _ { (k, v) }) ** ",") ","? _ "}"
+        "{" _ cs:((_ t:type_table_entry() _ { t }) ** ",") ","? ts:((_ "[" k:$("num" / "str" / "bool" / "table") "]" _ ":" _ v:type_() _ { (k, v) }) ** ",") ","? _ "}"
         {
             let mut tes = vec![];
             let mut i = 1;
@@ -157,7 +157,8 @@ peg::parser!(pub grammar parser() for str {
             let number = ts.iter().find(|(k, _)| *k == "num").map(|(_, v)| Box::new(v.clone()));
             let string = ts.iter().find(|(k, _)| *k == "str").map(|(_, v)| Box::new(v.clone()));
             let bool = ts.iter().find(|(k, _)| *k == "bool").map(|(_, v)| Box::new(v.clone()));
-            Type::Table(TypeTable { consts: tes, number, string, bool })
+            let table = ts.iter().find(|(k, _)| *k == "table").map(|(_, v)| Box::new(v.clone()));
+            Type::Table(TypeTable { consts: tes, number, string, bool, table })
         }
         a:type_function() { a }
         a:type_atom() { a }

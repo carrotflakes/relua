@@ -19,6 +19,7 @@ pub struct TypeTable {
     pub number: Option<Box<Type>>,
     pub string: Option<Box<Type>>,
     pub bool: Option<Box<Type>>,
+    pub table: Option<Box<Type>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -156,6 +157,7 @@ impl TypeTable {
             number: Some(Box::new(Type::Unknown)),
             string: Some(Box::new(Type::Unknown)),
             bool: Some(Box::new(Type::Unknown)),
+            table: Some(Box::new(Type::Unknown)),
         }
     }
 
@@ -173,6 +175,12 @@ impl TypeTable {
         }
 
         match (&self.bool, &other.bool) {
+            (_, None) => {}
+            (Some(l), Some(r)) if l.include(r) => {}
+            _ => return false,
+        }
+
+        match (&self.table, &other.table) {
             (_, None) => {}
             (Some(l), Some(r)) if l.include(r) => {}
             _ => return false,
@@ -217,14 +225,23 @@ impl TypeTable {
             number: self.number.as_ref().map(|t| Box::new(t.normalize())),
             string: self.string.as_ref().map(|t| Box::new(t.normalize())),
             bool: self.bool.as_ref().map(|t| Box::new(t.normalize())),
+            table: self.table.as_ref().map(|t| Box::new(t.normalize())),
         }
     }
 }
 
 impl std::fmt::Display for TypeTable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let TypeTable {
+            consts,
+            number,
+            string,
+            bool,
+            table,
+        } = self;
+
         write!(f, "{{")?;
-        for (i, (cd, t)) in self.consts.iter().enumerate() {
+        for (i, (cd, t)) in consts.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
             }
@@ -235,14 +252,17 @@ impl std::fmt::Display for TypeTable {
             }?;
             write!(f, ": {}", t)?;
         }
-        if let Some(t) = &self.number {
+        if let Some(t) = number {
             write!(f, ", [num]: {}", t)?;
         }
-        if let Some(t) = &self.string {
+        if let Some(t) = string {
             write!(f, ", [str]: {}", t)?;
         }
-        if let Some(t) = &self.bool {
+        if let Some(t) = bool {
             write!(f, ", [bool]: {}", t)?;
+        }
+        if let Some(t) = table {
+            write!(f, ", [table]: {}", t)?;
         }
         write!(f, "}}")
     }
