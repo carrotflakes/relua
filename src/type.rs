@@ -201,7 +201,7 @@ impl TypeTable {
             other
                 .consts
                 .iter()
-                .any(|(other_cd, other_t)| other_cd == cd && other_t.include(t))
+                .any(|(other_cd, other_t)| other_cd == cd && t.include(other_t))
         }) {
             return false;
         }
