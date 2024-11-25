@@ -45,6 +45,7 @@ pub fn default_bindings() -> HashMap<String, r#type::Type> {
                 string: Some(Box::new(Type::Any)),
                 bool: None,
                 table: None,
+                function: None,
             }),
         ),
     ]
@@ -89,8 +90,12 @@ fn f() {
     len!{1, 2, 3}
 }"#,
 r#"
-let t: {[table]: num} = {}
+let t: {[table]: num, [fn]: str} = {}
 t[{1, 2}] = 3
+t[fn() -> () {}] = "a"
+"#,
+r#"
+{1: "1", [2]: "2", ["3"]: "3"}
 "#,
     ];
     for src in &srcs {

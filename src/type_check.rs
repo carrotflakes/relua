@@ -216,6 +216,7 @@ fn check_expression(
             let mut string = vec![];
             let mut bool = vec![];
             let mut table = vec![];
+            let mut functions = vec![];
 
             for (key, value) in vec {
                 let value_type = check_expression(bindings.clone(), value)?;
@@ -231,6 +232,7 @@ fn check_expression(
                             Type::Bool => bool.push(value_type),
                             Type::Const(const_data) => consts.push((const_data, value_type)),
                             Type::Table(_) => table.push(value_type),
+                            Type::Function(_, _) => functions.push(value_type),
                             t => return Err(format!("Invalid table key type: {}", t)),
                         }
                     }
@@ -243,6 +245,7 @@ fn check_expression(
                 string: Type::from_types(string).map(Box::new),
                 bool: Type::from_types(bool).map(Box::new),
                 table: Type::from_types(table).map(Box::new),
+                function: Type::from_types(functions).map(Box::new),
             })
         }
         ast::Expression::LogicalAnd(a, b) => {
@@ -287,6 +290,16 @@ fn check_table(table_type: &TypeTable, index_type: &Type) -> Result<Type, String
             }
             check_table(table_type, &const_data.r#type())
         }
+        Type::Table(_) => table_type
+            .table
+            .as_ref()
+            .map(|t| (**t).clone())
+            .ok_or_else(|| "Invalid index".to_string()),
+        Type::Function(_, _) => table_type
+            .function
+            .as_ref()
+            .map(|t| (**t).clone())
+            .ok_or_else(|| "Invalid index".to_string()),
         Type::Union(ts) => {
             let ts = ts
                 .iter()

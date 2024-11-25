@@ -23,6 +23,7 @@ pub struct TypeTable {
     pub string: Option<Box<Type>>,
     pub bool: Option<Box<Type>>,
     pub table: Option<Box<Type>>,
+    pub function: Option<Box<Type>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -161,6 +162,7 @@ impl TypeTable {
             string: Some(Box::new(Type::Unknown)),
             bool: Some(Box::new(Type::Unknown)),
             table: Some(Box::new(Type::Unknown)),
+            function: Some(Box::new(Type::Unknown)),
         }
     }
 
@@ -184,6 +186,12 @@ impl TypeTable {
         }
 
         match (&self.table, &other.table) {
+            (_, None) => {}
+            (Some(l), Some(r)) if l.include(r) => {}
+            _ => return false,
+        }
+
+        match (&self.function, &other.function) {
             (_, None) => {}
             (Some(l), Some(r)) if l.include(r) => {}
             _ => return false,
@@ -229,6 +237,7 @@ impl TypeTable {
             string: self.string.as_ref().map(|t| Box::new(t.normalize())),
             bool: self.bool.as_ref().map(|t| Box::new(t.normalize())),
             table: self.table.as_ref().map(|t| Box::new(t.normalize())),
+            function: self.function.as_ref().map(|t| Box::new(t.normalize())),
         }
     }
 }
@@ -241,6 +250,7 @@ impl std::fmt::Display for TypeTable {
             string,
             bool,
             table,
+            function,
         } = self;
 
         write!(f, "{{")?;
@@ -266,6 +276,9 @@ impl std::fmt::Display for TypeTable {
         }
         if let Some(t) = table {
             write!(f, ", [table]: {}", t)?;
+        }
+        if let Some(t) = function {
+            write!(f, ", [fn]: {}", t)?;
         }
         write!(f, "}}")
     }
