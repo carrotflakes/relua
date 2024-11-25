@@ -3,6 +3,12 @@ name = "relua"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+
+# Enable this feature to use the floor division operator `//` that was added in Lua 5.3.
+idiv = []
+
 [dependencies]
 peg = "0.8"
 

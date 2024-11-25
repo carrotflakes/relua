@@ -79,7 +79,7 @@ peg::parser!(pub grammar parser() for str {
         --
         a:(@) _ "*" _ b:@ { function_expr("__mul", vec![a, b]) }
         a:(@) _ "/" _ b:@ { function_expr("__div", vec![a, b]) }
-        a:(@) _ "//" _ b:@ { function_expr("__idiv", vec![a, b]) }
+        a:(@) _ idiv_op() _ b:@ { function_expr("__idiv", vec![a, b]) }
         a:(@) _ "%" _ b:@ { function_expr("__mod", vec![a, b]) }
         --
         a:@ _ "^" _ b:(@) { function_expr("__pow", vec![a, b]) }
@@ -90,6 +90,9 @@ peg::parser!(pub grammar parser() for str {
         a:(@) _ "." _ b:identifier() { Expression::Index { table: Box::new(a), index: Box::new(Expression::Literal(Literal::String(b))) } }
         u:unary_op() { u }
     }
+
+    rule idiv_op() -> ()
+        = "//" {? if cfg!(feature = "idiv") {Ok(())} else {Err("// operator is not supported.")} }
 
     rule unary_op() -> Expression
         = "(" _ e:expression() _ ")" { e }
