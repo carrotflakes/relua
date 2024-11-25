@@ -18,12 +18,16 @@ peg::parser!(pub grammar parser() for str {
         { Statement::Fn {name, function: Function { parameters: params, return_type: rt, body: stmts } } }
 
     rule statements() -> Vec<Statement>
-        = _ s:(statement() ** _) _ { s }
+        = _ ss:(statement() ** _) _ rs:("return" _ e:expression() _ { Statement::Return(Some(e)) })? {
+            let mut ss = ss;
+            if let Some(r) = rs {
+                ss.push(r);
+            }
+            ss
+        }
 
     rule statement() -> Statement
-        = "return" _ e:expression() { Statement::Return(Some(e)) }
-        / "let" _ name:identifier() _ t:(":" _ t:type_() _ { t })? "=" _ e:expression()
-            { Statement::Let(Variable { name, type_: t, expr: e }) }
+        = "let" _ name:identifier() _ t:(":" _ t:type_() _ { t })? "=" _ e:expression() { Statement::Let(Variable { name, type_: t, expr: e }) }
         / if_else()
         / while_loop()
         / assignment()
