@@ -82,7 +82,7 @@ peg::parser!(pub grammar parser() for str {
         a:(@) _ "//" _ b:@ { function_expr("__idiv", vec![a, b]) }
         a:(@) _ "%" _ b:@ { function_expr("__mod", vec![a, b]) }
         --
-        a:(@) _ "^" _ b:@ { function_expr("__pow", vec![a, b]) }
+        a:@ _ "^" _ b:(@) { function_expr("__pow", vec![a, b]) }
         --
         "len!" _ a:(@) { function_expr("__len", vec![a]) }
         a:(@) _ "[" _ b:expression() _ "]" { Expression::Index { table: Box::new(a), index: Box::new(b) } }
