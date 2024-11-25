@@ -165,6 +165,7 @@ fn check_expression(
                         "__add" | "__sub" | "__mul" | "__div" | "__idiv" | "__mod" | "__pow" => {
                             Type::Function(vec![Type::Number, Type::Number], Box::new(Type::Number))
                         }
+                        "__neg" => Type::Function(vec![Type::Number], Box::new(Type::Number)),
                         "__len" => Type::Function(
                             vec![Type::Union(vec![
                                 Type::String,

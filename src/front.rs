@@ -109,6 +109,7 @@ peg::parser!(pub grammar parser() for str {
             }
             Expression::Table(tes)
         }
+        / "-" _ e:expression() { function_expr("__neg", vec![e]) }
         / "!" _ e:expression() { Expression::LogicalNot(Box::new(e)) }
         / f:function() { Expression::Fn(f) }
         / i:identifier() { Expression::Variable(i) }

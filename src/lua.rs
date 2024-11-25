@@ -101,6 +101,11 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
                         expression(writer, &arguments[0])?;
                         return Ok(());
                     }
+                    "__neg" => {
+                        writer.write_str("-")?;
+                        expression(writer, &arguments[0])?;
+                        return Ok(());
+                    }
                     "__eq" => Some("=="),
                     "__lt" => Some("<"),
                     "__le" => Some("<="),
