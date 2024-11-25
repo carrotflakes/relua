@@ -3,9 +3,10 @@ pub enum Type {
     Number,
     String,
     Bool,
+    Nil,
     Table(TypeTable),
     Function(Vec<Type>, Box<Type>),
-    Nil,
+    /// aka Top
     Unknown,
     Any,
     Const(ConstData),
@@ -159,43 +160,51 @@ impl TypeTable {
     }
 
     pub fn include(&self, other: &TypeTable) -> bool {
-        other
-            .number
-            .as_ref()
-            .map(|o| self.number.as_ref().map(|s| s.include(&o)).unwrap_or(false))
-            .unwrap_or(true)
-            && other
-                .string
-                .as_ref()
-                .map(|o| self.string.as_ref().map(|s| s.include(&o)).unwrap_or(false))
-                .unwrap_or(true)
-            && other
-                .bool
-                .as_ref()
-                .map(|o| self.bool.as_ref().map(|s| s.include(&o)).unwrap_or(false))
-                .unwrap_or(true)
-            && self.consts.iter().all(|(cd, t)| {
-                other
-                    .consts
-                    .iter()
-                    .any(|(other_cd, other_t)| other_cd == cd && other_t.include(t))
-            })
-            && other.consts.iter().all(|(cd, t)| {
-                self.consts
-                    .iter()
-                    .any(|(self_cd, self_t)| self_cd == cd && self_t.include(t))
-                    || match cd {
-                        ConstData::Number(_) => {
-                            self.number.as_ref().map(|s| s.include(t)).unwrap_or(false)
-                        }
-                        ConstData::String(_) => {
-                            self.string.as_ref().map(|s| s.include(t)).unwrap_or(false)
-                        }
-                        ConstData::Bool(_) => {
-                            self.bool.as_ref().map(|s| s.include(t)).unwrap_or(false)
-                        }
+        match (&self.number, &other.number) {
+            (_, None) => {}
+            (Some(l), Some(r)) if l.include(r) => {}
+            _ => return false,
+        }
+
+        match (&self.string, &other.string) {
+            (_, None) => {}
+            (Some(l), Some(r)) if l.include(r) => {}
+            _ => return false,
+        }
+
+        match (&self.bool, &other.bool) {
+            (_, None) => {}
+            (Some(l), Some(r)) if l.include(r) => {}
+            _ => return false,
+        }
+
+        if !self.consts.iter().all(|(cd, t)| {
+            other
+                .consts
+                .iter()
+                .any(|(other_cd, other_t)| other_cd == cd && other_t.include(t))
+        }) {
+            return false;
+        }
+
+        if !other.consts.iter().all(|(cd, t)| {
+            self.consts
+                .iter()
+                .any(|(self_cd, self_t)| self_cd == cd && self_t.include(t))
+                || match cd {
+                    ConstData::Number(_) => {
+                        self.number.as_ref().map(|s| s.include(t)).unwrap_or(false)
                     }
-            })
+                    ConstData::String(_) => {
+                        self.string.as_ref().map(|s| s.include(t)).unwrap_or(false)
+                    }
+                    ConstData::Bool(_) => self.bool.as_ref().map(|s| s.include(t)).unwrap_or(false),
+                }
+        }) {
+            return false;
+        }
+
+        true
     }
 
     pub fn normalize(&self) -> Self {
