@@ -267,48 +267,49 @@ fn check_expression(
 
 fn check_table(table_type: &TypeTable, index_type: &Type) -> Result<Type, String> {
     match index_type {
-        Type::Number => table_type
-            .number
-            .as_ref()
-            .map(|t| (**t).clone())
-            .ok_or_else(|| "Invalid index".to_string()),
-        Type::String => table_type
-            .string
-            .as_ref()
-            .map(|t| (**t).clone())
-            .ok_or_else(|| "Invalid index".to_string()),
-        Type::Bool => table_type
-            .bool
-            .as_ref()
-            .map(|t| (**t).clone())
-            .ok_or_else(|| "Invalid index".to_string()),
+        Type::Number => {
+            if let Some(t) = &table_type.number {
+                return Ok((**t).clone());
+            }
+        }
+        Type::String => {
+            if let Some(t) = &table_type.string {
+                return Ok((**t).clone());
+            }
+        }
+        Type::Bool => {
+            if let Some(t) = &table_type.bool {
+                return Ok((**t).clone());
+            }
+        }
+        Type::Table(_) => {
+            if let Some(t) = &table_type.table {
+                return Ok((**t).clone());
+            }
+        }
+        Type::Function(_, _) => {
+            if let Some(t) = &table_type.function {
+                return Ok((**t).clone());
+            }
+        }
         Type::Const(const_data) => {
             for (cd, ty) in table_type.consts.iter() {
                 if cd == const_data {
                     return Ok(ty.clone());
                 }
             }
-            check_table(table_type, &const_data.r#type())
+            return check_table(table_type, &const_data.r#type());
         }
-        Type::Table(_) => table_type
-            .table
-            .as_ref()
-            .map(|t| (**t).clone())
-            .ok_or_else(|| "Invalid index".to_string()),
-        Type::Function(_, _) => table_type
-            .function
-            .as_ref()
-            .map(|t| (**t).clone())
-            .ok_or_else(|| "Invalid index".to_string()),
         Type::Union(ts) => {
             let ts = ts
                 .iter()
                 .map(|t| check_table(table_type, t))
                 .collect::<Result<Vec<_>, _>>()?;
-            Ok(Type::Union(ts).normalize())
+            return Ok(Type::from_types(ts).unwrap());
         }
-        _ => Err(format!("Invalid index type: {}", index_type))?,
+        _ => {}
     }
+    Err(format!("Invalid index type: {}", index_type))
 }
 
 fn type_match(expect: &Type, actual: &Type) -> Result<(), String> {
