@@ -20,7 +20,7 @@ fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Re
             }
             ast::Statement::Expression(expr) => {
                 expression(writer, expr)?;
-                writer.write_str("\n")?;
+                writer.write_str(";\n")?;
             }
             ast::Statement::Fn { name, function } => {
                 writer.write_str(&format!("local function {}(", name))?;
@@ -37,7 +37,7 @@ fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Re
             ast::Statement::Let(variable) => {
                 writer.write_str(&format!("local {} = ", variable.name))?;
                 expression(writer, &variable.expr)?;
-                writer.write_str("\n")?;
+                writer.write_str(";\n")?;
             }
             ast::Statement::Assignment { target, expr } => {
                 match target {
@@ -53,7 +53,7 @@ fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Re
                 }
                 writer.write_str(" = ")?;
                 expression(writer, expr)?;
-                writer.write_str("\n")?;
+                writer.write_str(";\n")?;
             }
             ast::Statement::If {
                 condition,
