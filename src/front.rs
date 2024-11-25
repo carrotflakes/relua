@@ -12,9 +12,7 @@ peg::parser!(pub grammar parser() for str {
         rt:(
             "->" _ t:type_() _ { t }
         )?
-        "{" _
-        stmts:statements()
-        _ "}"
+        "{" _ stmts:statements() _ "}"
         { Statement::Fn {name, function: Function { parameters: params, return_type: rt, body: stmts } } }
 
     rule statements() -> Vec<Statement>
@@ -124,9 +122,7 @@ peg::parser!(pub grammar parser() for str {
         rt:(
             "->" _ t:type_() _ { t }
         )?
-        "{" _
-        stmts:statements()
-        _ "}"
+        "{" _ stmts:statements() _ "}"
         { Function { parameters: params, return_type: rt, body: stmts } }
 
     rule identifier() -> String
@@ -187,7 +183,7 @@ peg::parser!(pub grammar parser() for str {
     rule string() -> String
         = "\"" s:$([^'"']*) "\"" { s.to_owned() }
 
-    rule _() =  quiet!{[' ' | '\t' | '\n']*}
+    rule _() = quiet!{([' ' | '\t' | '\n'] / "#" [^'\n']*)*}
 });
 
 fn function_expr(name: &str) -> Box<Expression> {
@@ -254,6 +250,12 @@ let a: {f: (num) -> num} = {
 r#"
 fn f() {
     {1: 2, 3: 4}[1].a = 1
+}
+"#,
+r#"
+# comment
+fn f() { # a
+  # b
 }
 "#,
     ];
