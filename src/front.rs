@@ -67,24 +67,24 @@ peg::parser!(pub grammar parser() for str {
         --
         a:(@) _ "&&" _ b:@ { Expression::LogicalAnd(Box::new(a), Box::new(b)) }
         --
-        a:@ _ "==" _ b:(@) { Expression::Call { function: function_expr("__eq"), arguments: vec![a, b] } }
-        a:@ _ "!=" _ b:(@) { Expression::LogicalNot(Box::new(Expression::Call { function: function_expr("__eq"), arguments: vec![a, b] })) }
-        a:@ _ "<"  _ b:(@) { Expression::Call { function: function_expr("__lt"), arguments: vec![a, b] } }
-        a:@ _ "<=" _ b:(@) { Expression::Call { function: function_expr("__le"), arguments: vec![a, b] } }
-        a:@ _ ">"  _ b:(@) { Expression::LogicalNot(Box::new(Expression::Call { function: function_expr("__le"), arguments: vec![a, b] })) }
-        a:@ _ ">=" _ b:(@) { Expression::LogicalNot(Box::new(Expression::Call { function: function_expr("__lt"), arguments: vec![a, b] })) }
+        a:@ _ "==" _ b:(@) { function_expr("__eq", vec![a, b]) }
+        a:@ _ "!=" _ b:(@) { Expression::LogicalNot(Box::new(function_expr("__eq", vec![a, b]))) }
+        a:@ _ "<"  _ b:(@) { function_expr("__lt", vec![a, b]) }
+        a:@ _ "<=" _ b:(@) { function_expr("__le", vec![a, b]) }
+        a:@ _ ">"  _ b:(@) { Expression::LogicalNot(Box::new(function_expr("__le", vec![a, b]))) }
+        a:@ _ ">=" _ b:(@) { Expression::LogicalNot(Box::new(function_expr("__lt", vec![a, b]))) }
         --
-        a:(@) _ "+" _ b:@ { Expression::Call { function: function_expr("__add"), arguments: vec![a, b] } }
-        a:(@) _ "-" _ b:@ { Expression::Call { function: function_expr("__sub"), arguments: vec![a, b] } }
+        a:(@) _ "+" _ b:@ { function_expr("__add", vec![a, b]) }
+        a:(@) _ "-" _ b:@ { function_expr("__sub", vec![a, b]) }
         --
-        a:(@) _ "*" _ b:@ { Expression::Call { function: function_expr("__mul"), arguments: vec![a, b] } }
-        a:(@) _ "/" _ b:@ { Expression::Call { function: function_expr("__div"), arguments: vec![a, b] } }
-        a:(@) _ "//" _ b:@ { Expression::Call { function: function_expr("__idiv"), arguments: vec![a, b] } }
-        a:(@) _ "%" _ b:@ { Expression::Call { function: function_expr("__mod"), arguments: vec![a, b] } }
+        a:(@) _ "*" _ b:@ { function_expr("__mul", vec![a, b]) }
+        a:(@) _ "/" _ b:@ { function_expr("__div", vec![a, b]) }
+        a:(@) _ "//" _ b:@ { function_expr("__idiv", vec![a, b]) }
+        a:(@) _ "%" _ b:@ { function_expr("__mod", vec![a, b]) }
         --
-        a:(@) _ "^" _ b:@ { Expression::Call { function: function_expr("__pow"), arguments: vec![a, b] } }
+        a:(@) _ "^" _ b:@ { function_expr("__pow", vec![a, b]) }
         --
-        "len!" _ a:(@) { Expression::Call { function: function_expr("__len"), arguments: vec![a] } }
+        "len!" _ a:(@) { function_expr("__len", vec![a]) }
         a:(@) _ "[" _ b:expression() _ "]" { Expression::Index { table: Box::new(a), index: Box::new(b) } }
         a:(@) _ "(" _ args:((_ e:expression() _ {e}) ** ",") ")" { Expression::Call { function: Box::new(a), arguments: args } }
         a:(@) _ "." _ b:identifier() { Expression::Index { table: Box::new(a), index: Box::new(Expression::Literal(Literal::String(b))) } }
@@ -186,8 +186,11 @@ peg::parser!(pub grammar parser() for str {
     rule _() = quiet!{([' ' | '\t' | '\n'] / "#" [^'\n']*)*}
 });
 
-fn function_expr(name: &str) -> Box<Expression> {
-    Box::new(Expression::Literal(Literal::String(name.to_owned())))
+fn function_expr(name: &str, args: Vec<Expression>) -> Expression {
+    Expression::Call {
+        function: Box::new(Expression::Literal(Literal::String(name.to_owned()))),
+        arguments: args,
+    }
 }
 
 #[test]
@@ -247,12 +250,12 @@ let a: {f: (num) -> num} = {
     }
 }
 "#,
-r#"
+        r#"
 fn f() {
     {1: 2, 3: 4}[1].a = 1
 }
 "#,
-r#"
+        r#"
 # comment
 fn f() { # a
   # b
