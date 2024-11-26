@@ -27,6 +27,7 @@ peg::parser!(pub grammar parser() for str {
         / if_else()
         / while_loop()
         / for_numeric()
+        / for_generic()
         / assignment()
         / def_function()
         / e:expression() { Statement::Expression(e) }
@@ -46,6 +47,11 @@ peg::parser!(pub grammar parser() for str {
         = "for" _ i:identifier() _ "=" _ s:expression() _ "," _ e:expression() step:(_ "," _ e:expression() _ { e })? _ "{" _
         body:statements() _ "}"
         { Statement::ForNumeric { variable: i, start: s, end: e, step, body } }
+
+    rule for_generic() -> Statement
+        = "for" _ vs:((_ name:identifier() _ t:(":" _ t:type_() _ { t })? { (name, t) }) ++ ",") _ "in" _ es:((_ e:expression() _ { e }) ++ ",") _ "{" _
+        body:statements() _ "}"
+        { Statement::ForGeneric { variables: vs, exprs: es, body } }
 
     rule assignment() -> Statement
         = vs:((_ l:lval() _ { l }) ++ ",") _ "=" _ es:((_ e:expression() _ { e }) ++ ",") {
@@ -137,7 +143,7 @@ peg::parser!(pub grammar parser() for str {
         / expected!("identifier")
 
     rule keyword() -> ()
-        = "fn" / "let"/ "if" / "else" / "while" / "return" / "true" / "false"
+        = "fn" / "let"/ "if" / "else" / "while" / "for" / "in" / "return" / "true" / "false"
 
     rule literal() -> Literal
         = n:$(['0'..='9']+ ("." ['0'..='9']*)?) { Literal::Number(n.parse().unwrap()) }

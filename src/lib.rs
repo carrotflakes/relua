@@ -35,9 +35,14 @@ pub fn default_bindings() -> HashMap<String, r#type::Type> {
     use r#type::{Type, TypeTable};
 
     let bindings: HashMap<String, Type> = vec![
+        ("print", Type::Function(vec![Type::Unknown], vec![])),
         (
-            "print",
-            Type::Function(vec![Type::Unknown], vec![]),
+            "pairs",
+            Type::Function(vec![Type::Table(TypeTable::any())], vec![]),
+        ),
+        (
+            "ipairs",
+            Type::Function(vec![Type::Table(TypeTable::any())], vec![]),
         ),
         (
             "math",

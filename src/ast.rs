@@ -28,11 +28,11 @@ pub enum Statement {
         step: Option<Expression>,
         body: Vec<Statement>,
     },
-    // ForGeneric {
-    //     variables: Vec<String>,
-    //     iter: Expression,
-    //     body: Vec<Statement>,
-    // },
+    ForGeneric {
+        variables: Vec<(String, Option<Type>)>,
+        exprs: Vec<Expression>,
+        body: Vec<Statement>,
+    },
     Return(Vec<Expression>),
 }
 

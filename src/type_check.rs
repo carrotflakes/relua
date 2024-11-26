@@ -156,8 +156,24 @@ fn check_statements(
                     let step_type = check_expression(bindings.clone(), step)?[0].clone();
                     type_match(&Type::Number, &step_type)?;
                 }
+                let mut bindings = bindings.clone();
                 bindings.insert(variable.clone(), Type::Number);
-                check_statements(bindings.clone(), body, return_type)?;
+                check_statements(bindings, body, return_type)?;
+            }
+            ast::Statement::ForGeneric {
+                variables,
+                exprs,
+                body,
+            } => {
+                // TODO: type check
+                for expr in exprs {
+                    check_expression(bindings.clone(), expr)?;
+                }
+                let mut bindings = bindings.clone();
+                for (name, type_) in variables {
+                    bindings.insert(name.clone(), type_.clone().unwrap_or(Type::Any));
+                }
+                check_statements(bindings, body, return_type)?;
             }
             ast::Statement::Return(exprs) => {
                 if exprs.len() == 1 {

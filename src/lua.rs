@@ -125,6 +125,29 @@ fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Re
                 statements(writer, body)?;
                 writer.write_str("end\n")?;
             }
+            ast::Statement::ForGeneric {
+                variables,
+                exprs,
+                body,
+            } => {
+                writer.write_str("for ")?;
+                for (i, (var, _)) in variables.iter().enumerate() {
+                    if i > 0 {
+                        writer.write_str(", ")?;
+                    }
+                    writer.write_str(var)?;
+                }
+                writer.write_str(" in ")?;
+                for (i, expr) in exprs.iter().enumerate() {
+                    if i > 0 {
+                        writer.write_str(", ")?;
+                    }
+                    expression(writer, expr)?;
+                }
+                writer.write_str(" do\n")?;
+                statements(writer, body)?;
+                writer.write_str("end\n")?;
+            }
         }
     }
     Ok(())

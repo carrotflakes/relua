@@ -55,6 +55,11 @@ for i = 1, 10, 2 {
 }
 "#,
 r#"
+for k, v in pairs({1, 2, 3}) {
+    print(k, v)
+}
+"#,
+r#"
 let a: num, b: num = 1, 2
 b, a = a, b
 "#,
