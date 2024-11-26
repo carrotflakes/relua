@@ -50,18 +50,19 @@ peg::parser!(pub grammar parser() for str {
         { Statement::ForNumeric { variable: i, start: s, end: e, step, body } }
 
     rule assignment() -> Statement
-        = i:identifier() _ "=" _ e:expression() {Statement::Assignment {
-            target: LValue::Variable(i),
-            expr: e,
-        }}
-        / t:expression() _ "=" _ e:expression() {?
-            if let Expression::Index { table, index } = t {
-                Ok(Statement::Assignment {
-                    target: LValue::Index(table, index),
-                    expr: e,
-                })
-            } else {
-                Err("expected index expression")
+        = vs:((_ l:lval() _ { l }) ++ ",") _ "=" _ es:((_ e:expression() _ { e }) ++ ",") {
+            Statement::Assignment {
+                vars: vs,
+                exprs: es,
+            }
+        }
+
+    rule lval() -> LValue
+        = t:expression() {?
+            match t {
+                Expression::Index { table, index } => Ok(LValue::Index(table, index)),
+                Expression::Variable(i) => Ok(LValue::Variable(i)),
+                _ => Err("expected index or variable expression"),
             }
         }
 

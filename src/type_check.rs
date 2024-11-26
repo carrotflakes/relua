@@ -86,23 +86,29 @@ fn check_statements(
                     bindings.insert(variable.name.clone(), actual);
                 }
             }
-            ast::Statement::Assignment { target, expr } => {
-                let var_type = match target {
-                    ast::LValue::Variable(name) => bindings
-                        .get(name)
-                        .ok_or_else(|| format!("Variable not found: {}", name))?
-                        .clone(),
-                    ast::LValue::Index(table, index) => {
-                        let table_type = check_expression(bindings.clone(), table)?;
-                        let Type::Table(table_type) = table_type else {
-                            return Err("Not a table".to_string());
-                        };
-                        let index_type = check_expression(bindings.clone(), index)?;
-                        check_table(&table_type, &index_type)?
-                    }
-                };
-                let actual = check_expression(bindings.clone(), expr)?;
-                type_match(&var_type, &actual)?;
+            ast::Statement::Assignment { vars, exprs } => {
+                let mut var_types = vec![];
+                for var in vars {
+                    let var_type = match var {
+                        ast::LValue::Variable(name) => bindings
+                            .get(name)
+                            .ok_or_else(|| format!("Variable not found: {}", name))?
+                            .clone(),
+                        ast::LValue::Index(table, index) => {
+                            let table_type = check_expression(bindings.clone(), table)?;
+                            let Type::Table(table_type) = table_type else {
+                                return Err("Not a table".to_string());
+                            };
+                            let index_type = check_expression(bindings.clone(), index)?;
+                            check_table(&table_type, &index_type)?
+                        }
+                    };
+                    var_types.push(var_type);
+                }
+                for i in 0..exprs.len() {
+                    let expr_type = check_expression(bindings.clone(), &exprs[i])?;
+                    type_match(&var_types[i], &expr_type)?;
+                }
             }
             ast::Statement::If {
                 condition,

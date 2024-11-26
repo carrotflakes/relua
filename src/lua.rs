@@ -39,20 +39,30 @@ fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Re
                 expression(writer, &variable.expr)?;
                 writer.write_str(";\n")?;
             }
-            ast::Statement::Assignment { target, expr } => {
-                match target {
-                    ast::LValue::Variable(v) => {
-                        writer.write_str(v)?;
+            ast::Statement::Assignment { vars, exprs } => {
+                for (i, var) in vars.iter().enumerate() {
+                    if i > 0 {
+                        writer.write_str(", ")?;
                     }
-                    ast::LValue::Index(table, index) => {
-                        expression(writer, table)?;
-                        writer.write_str("[")?;
-                        expression(writer, index)?;
-                        writer.write_str("]")?;
+                    match var {
+                        ast::LValue::Variable(v) => {
+                            writer.write_str(v)?;
+                        }
+                        ast::LValue::Index(table, index) => {
+                            expression(writer, table)?;
+                            writer.write_str("[")?;
+                            expression(writer, index)?;
+                            writer.write_str("]")?;
+                        }
                     }
                 }
                 writer.write_str(" = ")?;
-                expression(writer, expr)?;
+                for (i, expr) in exprs.iter().enumerate() {
+                    if i > 0 {
+                        writer.write_str(", ")?;
+                    }
+                    expression(writer, expr)?;
+                }
                 writer.write_str(";\n")?;
             }
             ast::Statement::If {

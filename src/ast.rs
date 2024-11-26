@@ -8,10 +8,9 @@ pub enum Statement {
         name: String,
         function: Function,
     },
-    // TODO: multiple assignment
     Assignment {
-        target: LValue,
-        expr: Expression,
+        vars: Vec<LValue>,
+        exprs: Vec<Expression>,
     },
     If {
         condition: Expression,
