@@ -10,12 +10,17 @@ fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Re
     for stmt in stmts {
         match stmt {
             ast::Statement::Return(expr) => {
-                if let Some(expr) = expr {
-                    writer.write_str("return ")?;
-                    expression(writer, expr)?;
-                    writer.write_str("\n")?;
-                } else {
+                if expr.is_empty() {
                     writer.write_str("return\n")?;
+                } else {
+                    writer.write_str("return ")?;
+                    for (i, e) in expr.iter().enumerate() {
+                        if i > 0 {
+                            writer.write_str(", ")?;
+                        }
+                        expression(writer, e)?;
+                    }
+                    writer.write_str("\n")?;
                 }
             }
             ast::Statement::Expression(expr) => {
@@ -34,9 +39,21 @@ fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Re
                 statements(writer, &function.body)?;
                 writer.write_str("end\n")?;
             }
-            ast::Statement::Let(variable) => {
-                writer.write_str(&format!("local {} = ", variable.name))?;
-                expression(writer, &variable.expr)?;
+            ast::Statement::Let(vars, exprs) => {
+                writer.write_str(&format!("local "))?;
+                for (i, (var, _)) in vars.iter().enumerate() {
+                    if i > 0 {
+                        writer.write_str(", ")?;
+                    }
+                    writer.write_str(var)?;
+                }
+                writer.write_str(" = ")?;
+                for (i, expr) in exprs.iter().enumerate() {
+                    if i > 0 {
+                        writer.write_str(", ")?;
+                    }
+                    expression(writer, expr)?;
+                }
                 writer.write_str(";\n")?;
             }
             ast::Statement::Assignment { vars, exprs } => {

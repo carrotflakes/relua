@@ -9,14 +9,12 @@ peg::parser!(pub grammar parser() for str {
     rule def_function() -> Statement
         = "fn" _ name:identifier() _
         "(" params:((_ i:identifier() _ ":" _ t:type_() {(i, t)}) ** ",") ")" _
-        rt:(
-            "->" _ t:type_() _ { t }
-        )?
+        rt:ret_types()?
         "{" _ stmts:statements() _ "}"
-        { Statement::Fn {name, function: Function { parameters: params, return_type: rt, body: stmts } } }
+        { Statement::Fn {name, function: Function { parameters: params, return_types: rt, body: stmts } } }
 
     rule statements() -> Vec<Statement>
-        = _ ss:(statement() ** _) _ rs:("return" _ e:expression() _ { Statement::Return(Some(e)) })? {
+        = _ ss:(statement() ** _) _ rs:("return" es:((_ e:expression() _ { e }) ** ",") { Statement::Return(es) })? {
             let mut ss = ss;
             if let Some(r) = rs {
                 ss.push(r);
@@ -25,7 +23,7 @@ peg::parser!(pub grammar parser() for str {
         }
 
     rule statement() -> Statement
-        = "let" _ name:identifier() _ t:(":" _ t:type_() _ { t })? "=" _ e:expression() { Statement::Let(Variable { name, type_: t, expr: e }) }
+        = "let" vs:((_ name:identifier() _ t:(":" _ t:type_() _ { t })? { (name, t) }) ++ ",") "=" es:((_ e:expression() _ { e }) ++ ",") { Statement::Let(vs, es) }
         / if_else()
         / while_loop()
         / for_numeric()
@@ -130,11 +128,9 @@ peg::parser!(pub grammar parser() for str {
     rule function() -> Function
         = "fn" _
         "(" params:((_ i:identifier() _ ":" _ t:type_() {(i, t)}) ** ",") ")" _
-        rt:(
-            "->" _ t:type_() _ { t }
-        )?
+        rt:ret_types()?
         "{" _ stmts:statements() _ "}"
-        { Function { parameters: params, return_type: rt, body: stmts } }
+        { Function { parameters: params, return_types: rt, body: stmts } }
 
     rule identifier() -> String
         = quiet!{ !keyword() n:$(['a'..='z' | 'A'..='Z' | '_']['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*) { n.to_owned() } }
@@ -182,7 +178,11 @@ peg::parser!(pub grammar parser() for str {
         / t:type_() { (None, t) }
 
     rule type_function() -> Type
-        = "(" _ ps:((_ t:type_() _ { t }) ** ",") ")" _ "->" _ r:type_() { Type::Function(ps, Box::new(r)) }
+        = "(" _ ps:((_ t:type_() _ { t }) ** ",") ")" _ rt:ret_types() { Type::Function(ps, rt) }
+
+    rule ret_types() -> Vec<Type>
+        = "->" _ t:type_() _ { vec![t] }
+        / "->" _ "(" ts:((_ t:type_() _ { t }) ** ",") ")" _ { ts }
 
     rule type_atom() -> Type
         = "num" { Type::Number }

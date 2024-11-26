@@ -11,7 +11,7 @@ pub enum Type {
     Bool,
     Nil,
     Table(TypeTable),
-    Function(Vec<Type>, Box<Type>),
+    Function(Vec<Type>, Vec<Type>),
 
     Const(ConstData),
 }
@@ -64,7 +64,10 @@ impl Type {
                 l_ps.iter()
                     .zip(r_ps.iter().chain(vec![Type::Nil].iter().cycle()))
                     .all(|(l, r)| l.include(r))
-                    && l_ret.include(r_ret)
+                    && l_ret
+                        .iter()
+                        .zip(r_ret.iter().chain(vec![Type::Nil].iter().cycle()))
+                        .all(|(l, r)| l.include(r))
             }
             (Type::Function(_, _), _) => false,
         }
@@ -99,7 +102,7 @@ impl Type {
             Type::Table(t) => Type::Table(t.normalize()),
             Type::Function(ps, r) => Type::Function(
                 ps.iter().map(|t| t.normalize()).collect(),
-                Box::new(r.normalize()),
+                r.iter().map(|t| t.normalize()).collect(),
             ),
             t => t.clone(),
         }
@@ -131,7 +134,17 @@ impl std::fmt::Display for Type {
                     }
                     write!(f, "{}", t)?;
                 }
-                write!(f, ") -> {}", r)
+                write!(f, ") -> ")?;
+                if r.is_empty() {
+                    write!(f, "()")?;
+                }
+                for (i, t) in r.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", t)?;
+                }
+                Ok(())
             }
             Type::Nil => write!(f, "()"),
             Type::Unknown => write!(f, "unknown"),

@@ -54,6 +54,17 @@ for i = 1, 10, 2 {
     print(i)
 }
 "#,
+r#"
+let a: num, b: num = 1, 2
+b, a = a, b
+"#,
+r#"
+fn f(a: num, b: str) -> (num, str) {
+    return a, b
+}
+let a: num, b: str = f(1, "2")
+let a: num, b: bool = f(1, "2"), true
+"#
     ];
     for src in &srcs {
         let prog = parser::program(src).unwrap();
@@ -76,6 +87,8 @@ for i = 1, 10, 2 {
         r#"let a: {1, [num]: str} = {1, 2, 3}"#,
         r#"let a: {1, [str]: num} = {1, 2, 3}"#,
         r#"let f: (num, num) -> () = fn(a: num) -> () {}"#,
+        r#"let f: (num, str) -> (num, str) = fn(a: num) {return 1}"#,
+        r#"let f: (num) -> (num) = fn(a: num, b: str) {return 1, "2"}"#,
     ];
     for src in &srcs {
         let prog = parser::program(src).unwrap();

@@ -37,7 +37,7 @@ pub fn default_bindings() -> HashMap<String, r#type::Type> {
     let bindings: HashMap<String, Type> = vec![
         (
             "print",
-            Type::Function(vec![Type::Unknown], Box::new(Type::Nil)),
+            Type::Function(vec![Type::Unknown], vec![]),
         ),
         (
             "math",

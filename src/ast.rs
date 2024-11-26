@@ -3,7 +3,7 @@ use crate::r#type::{ConstData, Type};
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Expression(Expression),
-    Let(Variable),
+    Let(Vec<(String, Option<Type>)>, Vec<Expression>),
     Fn {
         name: String,
         function: Function,
@@ -33,7 +33,7 @@ pub enum Statement {
     //     iter: Expression,
     //     body: Vec<Statement>,
     // },
-    Return(Option<Expression>),
+    Return(Vec<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -58,15 +58,8 @@ pub enum Expression {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
     pub parameters: Vec<(String, Type)>,
-    pub return_type: Option<Type>,
+    pub return_types: Option<Vec<Type>>,
     pub body: Vec<Statement>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct Variable {
-    pub name: String,
-    pub type_: Option<Type>,
-    pub expr: Expression,
 }
 
 #[derive(Debug, Clone, PartialEq)]
