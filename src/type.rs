@@ -1,6 +1,5 @@
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Type {
-    /// Any aka Top
     Any,
     Unknown,
 
@@ -134,17 +133,14 @@ impl std::fmt::Display for Type {
                     }
                     write!(f, "{}", t)?;
                 }
-                write!(f, ") -> ")?;
-                if r.is_empty() {
-                    write!(f, "()")?;
-                }
+                write!(f, ") -> (")?;
                 for (i, t) in r.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
                     write!(f, "{}", t)?;
                 }
-                Ok(())
+                write!(f, ")")
             }
             Type::Nil => write!(f, "()"),
             Type::Unknown => write!(f, "unknown"),
