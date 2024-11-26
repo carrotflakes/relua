@@ -69,7 +69,7 @@ fn f(a: num, b: str) -> (num, str) {
 }
 let a: num, b: str = f(1, "2")
 let a: num, b: bool = f(1, "2"), true
-"#
+"#,
     ];
     for src in &srcs {
         let prog = parser::program(src).unwrap();
@@ -94,6 +94,7 @@ let a: num, b: bool = f(1, "2"), true
         r#"let f: (num, num) -> () = fn(a: num) -> () {}"#,
         r#"let f: (num, str) -> (num, str) = fn(a: num) {return 1}"#,
         r#"let f: (num) -> (num) = fn(a: num, b: str) {return 1, "2"}"#,
+        r#"let a: {type: "user", name: str} = {type: "user", name: "carrotflakes"}"#,
     ];
     for src in &srcs {
         let prog = parser::program(src).unwrap();
