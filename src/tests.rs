@@ -46,6 +46,14 @@ t[fn() -> () {}] = "a"
 let f: (num) -> () = fn(a: num, b: num) -> () {}
 let f: (num, num | ()) -> () = fn(a: num) -> () {}
 "#,
+r#"
+for i = 1, 10 {
+    print(i)
+}
+for i = 1, 10, 2 {
+    print(i)
+}
+"#,
     ];
     for src in &srcs {
         let prog = parser::program(src).unwrap();

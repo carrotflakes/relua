@@ -117,6 +117,24 @@ fn check_statements(
                 check_expression(bindings.clone(), condition)?;
                 check_statements(bindings.clone(), body, return_type)?;
             }
+            ast::Statement::ForNumeric {
+                variable,
+                start,
+                end,
+                step,
+                body,
+            } => {
+                let start_type = check_expression(bindings.clone(), start)?;
+                type_match(&Type::Number, &start_type)?;
+                let end_type = check_expression(bindings.clone(), end)?;
+                type_match(&Type::Number, &end_type)?;
+                if let Some(step) = step {
+                    let step_type = check_expression(bindings.clone(), step)?;
+                    type_match(&Type::Number, &step_type)?;
+                }
+                bindings.insert(variable.clone(), Type::Number);
+                check_statements(bindings.clone(), body, return_type)?;
+            }
             ast::Statement::Return(expression) => {
                 if let Some(expression) = expression {
                     let actual = check_expression(bindings.clone(), expression)?;

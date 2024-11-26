@@ -28,6 +28,7 @@ peg::parser!(pub grammar parser() for str {
         = "let" _ name:identifier() _ t:(":" _ t:type_() _ { t })? "=" _ e:expression() { Statement::Let(Variable { name, type_: t, expr: e }) }
         / if_else()
         / while_loop()
+        / for_numeric()
         / assignment()
         / def_function()
         / e:expression() { Statement::Expression(e) }
@@ -42,6 +43,11 @@ peg::parser!(pub grammar parser() for str {
         = "while" _ e:expression() _ "{" _
         loop_body:statements() _ "}"
         { Statement::While { condition: e, body: loop_body } }
+
+    rule for_numeric() -> Statement
+        = "for" _ i:identifier() _ "=" _ s:expression() _ "," _ e:expression() step:(_ "," _ e:expression() _ { e })? _ "{" _
+        body:statements() _ "}"
+        { Statement::ForNumeric { variable: i, start: s, end: e, step, body } }
 
     rule assignment() -> Statement
         = i:identifier() _ "=" _ e:expression() {Statement::Assignment {

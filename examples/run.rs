@@ -29,6 +29,8 @@ fn main() {
     print(fib(10))
 }
 main()
+
+let a: {num, num} = {1, 2}
 "#;
     let src = relua::compile(src).unwrap();
 

@@ -22,6 +22,18 @@ pub enum Statement {
         condition: Expression,
         body: Vec<Statement>,
     },
+    ForNumeric {
+        variable: String,
+        start: Expression,
+        end: Expression,
+        step: Option<Expression>,
+        body: Vec<Statement>,
+    },
+    // ForGeneric {
+    //     variables: Vec<String>,
+    //     iter: Expression,
+    //     body: Vec<Statement>,
+    // },
     Return(Option<Expression>),
 }
 

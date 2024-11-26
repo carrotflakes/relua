@@ -77,6 +77,27 @@ fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Re
                 statements(writer, body)?;
                 writer.write_str("end\n")?;
             }
+            ast::Statement::ForNumeric {
+                variable,
+                start,
+                end,
+                step,
+                body,
+            } => {
+                writer.write_str("for ")?;
+                writer.write_str(variable)?;
+                writer.write_str(" = ")?;
+                expression(writer, start)?;
+                writer.write_str(", ")?;
+                expression(writer, end)?;
+                if let Some(step) = step {
+                    writer.write_str(", ")?;
+                    expression(writer, step)?;
+                }
+                writer.write_str(" do\n")?;
+                statements(writer, body)?;
+                writer.write_str("end\n")?;
+            }
         }
     }
     Ok(())
