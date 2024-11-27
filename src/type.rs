@@ -15,6 +15,7 @@ pub enum Type {
     Const(ConstData),
 
     Variable(String),
+    Generic(Vec<String>, Box<Type>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -71,7 +72,9 @@ impl Type {
                         .all(|(l, r)| l.include(r))
             }
             (Type::Function(_, _), _) => false,
-            (Type::Variable(_), _) => panic!("Var type should be resolved"),
+            (Type::Variable(l), Type::Variable(r)) => l == r, // Is this correct?
+            (Type::Variable(_), _) => panic!("Variable type should be resolved: {}", self),
+            (Type::Generic(_, _), _) => panic!("Generic type should be resolved: {}", self),
         }
     }
 
@@ -178,6 +181,13 @@ impl Type {
                     .collect::<Result<_, _>>()?,
                 r.iter().map(|t| t.resolve(map)).collect::<Result<_, _>>()?,
             )),
+            Type::Generic(params, t) => {
+                let mut map = map.clone();
+                for p in params {
+                    map.insert(p.clone(), Type::Variable(p.clone()));
+                }
+                Ok(t.resolve(&map)?)
+            }
             t => Ok(t.clone()),
         }
     }
@@ -226,6 +236,16 @@ impl std::fmt::Display for Type {
                 ConstData::Bool(b) => write!(f, "{}", b),
             },
             Type::Variable(name) => write!(f, "{}", name),
+            Type::Generic(params, t) => {
+                write!(f, "<")?;
+                for (i, p) in params.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", p)?;
+                }
+                write!(f, "> {}", t)
+            }
         }
     }
 }

@@ -74,6 +74,32 @@ r#"
 type User = {type: "user", name: str}
 let a: User = {type: "user", name: "carrotflakes"}
 "#,
+r#"
+fn f<T>(a: T) -> T {
+    return a
+}
+let a: num = f<num>(1)
+let a: str = f<str>("a")
+"#,
+r#"
+fn f<T>(a: T) -> {get: () -> T} {
+    return {
+        get: fn() -> T {
+            return a
+        }
+    }
+}
+let a = f<num>(1)
+print(a.get())
+"#,
+r#"
+type T = num
+fn f<T>(a: T) -> T {
+    return a
+}
+f<num>(1)
+f("1")
+"#
     ];
     for src in &srcs {
         let prog = parser::program(src).unwrap();
@@ -99,6 +125,7 @@ let a: User = {type: "user", name: "carrotflakes"}
         r#"let f: (num, str) -> (num, str) = fn(a: num) {return 1}"#,
         r#"let f: (num) -> (num) = fn(a: num, b: str) {return 1, "2"}"#,
         r#"let a: {type: "user", name: str} = {type: "user", name: "carrotflakes"}"#,
+        r#"(fn<T>(a: T) -> T {return a})<num>("a")"#,
     ];
     for src in &srcs {
         let prog = parser::program(src).unwrap();

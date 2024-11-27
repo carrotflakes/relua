@@ -70,23 +70,36 @@ impl Context {
                     ctx.check_expression(expression)?;
                 }
                 ast::Statement::Fn { name, function } => {
-                    let params = ctx.resolve_types(function.parameters.iter().map(|(_, t)| t))?;
+                    let mut ctx1 = ctx.child();
+                    for p in &function.type_params {
+                        ctx1.type_table.insert(p.clone(), Type::Variable(p.clone()));
+                    }
+
+                    let params = ctx1.resolve_types(function.parameters.iter().map(|(_, t)| t))?;
+                    let wrap_generics: &dyn Fn(Type) -> Type = if function.type_params.is_empty() {
+                        &|t| t
+                    } else {
+                        &|t| Type::Generic(function.type_params.clone(), Box::new(t))
+                    };
 
                     // Add function to bindings to allow recursion
-                    ctx.insert(
+                    ctx1.insert(
                         name.clone(),
-                        Type::Function(
+                        wrap_generics(Type::Function(
                             params.clone(),
                             if let Some(t) = &function.return_types {
-                                ctx.resolve_types(t.iter())?
+                                ctx1.resolve_types(t.iter())?
                             } else {
                                 vec![]
                             }, // unknown?
-                        ),
+                        )),
                     );
 
-                    let ret_types = ctx.check_function(function)?;
-                    ctx.insert(name.clone(), Type::Function(params, ret_types));
+                    let ret_types = ctx1.check_function(function)?;
+                    ctx.insert(
+                        name.clone(),
+                        wrap_generics(Type::Function(params, ret_types.clone())),
+                    );
                 }
                 ast::Statement::Let(vars, exprs) => {
                     if exprs.len() == 1 {
@@ -268,6 +281,7 @@ impl Context {
                 };
                 vec![val]
             }
+            ast::Expression::Nil => vec![Type::Nil],
             ast::Expression::Variable(name) => {
                 let val = self
                     .get(name)
@@ -331,7 +345,7 @@ impl Context {
                     }
                     return_types
                 } else {
-                    return Err("Not a function".to_string());
+                    return Err(format!("Not a function: {}", func_type));
                 }
             }
             ast::Expression::Index { table, index } => {
@@ -345,11 +359,26 @@ impl Context {
                 vec![check_table(&table_type, &index_type)?]
             }
             ast::Expression::Fn(function) => {
-                let ret_types = self.check_function(function)?;
-                vec![Type::Function(
-                    function.parameters.iter().map(|(_, t)| t.clone()).collect(),
-                    ret_types,
-                )]
+                if function.type_params.is_empty() {
+                    let ret_types = self.check_function(function)?;
+                    vec![Type::Function(
+                        function.parameters.iter().map(|(_, t)| t.clone()).collect(),
+                        ret_types,
+                    )]
+                } else {
+                    let mut ctx = self.child();
+                    for p in &function.type_params {
+                        ctx.type_table.insert(p.clone(), Type::Variable(p.clone()));
+                    }
+                    let ret_types = ctx.check_function(function)?;
+                    vec![Type::Generic(
+                        function.type_params.clone(),
+                        Box::new(Type::Function(
+                            function.parameters.iter().map(|(_, t)| t.clone()).collect(),
+                            ret_types,
+                        )),
+                    )]
+                }
             }
             ast::Expression::Table(vec) => {
                 let mut consts = vec![];
@@ -404,6 +433,28 @@ impl Context {
             ast::Expression::LogicalNot(e) => {
                 self.check_expression(e)?;
                 vec![Type::Bool]
+            }
+            ast::Expression::TypeResolve(e, type_args) => {
+                let ts = self.check_expression(e)?;
+                let type_args = self.resolve_types(type_args.iter())?;
+                if ts.len() != 1 {
+                    return Err("Type resolve expects one argument".to_string());
+                }
+                match &ts[0] {
+                    Type::Generic(params, t) => {
+                        if params.len() != type_args.len() {
+                            return Err("Type resolve expects same number of type arguments as generic parameters".to_string());
+                        }
+                        let mut ctx = self.child();
+                        for (param, arg) in params.iter().zip(type_args.iter()) {
+                            ctx.type_table.insert(param.clone(), arg.clone());
+                        }
+                        vec![ctx.resolve_type(t)?]
+                    }
+                    _ => {
+                        return Err("Type resolve expects a generic type".to_string());
+                    }
+                }
             }
         })
     }

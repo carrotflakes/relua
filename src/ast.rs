@@ -40,6 +40,7 @@ pub enum Statement {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Literal(Literal),
+    Nil,
     Variable(String),
     Call {
         function: Box<Expression>,
@@ -54,10 +55,12 @@ pub enum Expression {
     LogicalAnd(Box<Expression>, Box<Expression>),
     LogicalOr(Box<Expression>, Box<Expression>),
     LogicalNot(Box<Expression>),
+    TypeResolve(Box<Expression>, Vec<Type>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
+    pub type_params: Vec<String>,
     pub parameters: Vec<(String, Type)>,
     pub return_types: Option<Vec<Type>>,
     pub body: Vec<Statement>,

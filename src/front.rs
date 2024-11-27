@@ -7,11 +7,11 @@ peg::parser!(pub grammar parser() for str {
         = statements()
 
     rule def_function() -> Statement
-        = "fn" _ name:identifier() _
+        = "fn" _ name:identifier() _ tps:type_params() _
         "(" params:((_ i:identifier() _ ":" _ t:type_() {(i, t)}) ** ",") ")" _
         rt:ret_types()?
         "{" _ stmts:statements() _ "}"
-        { Statement::Fn {name, function: Function { parameters: params, return_types: rt, body: stmts } } }
+        { Statement::Fn {name, function: Function { type_params: tps, parameters: params, return_types: rt, body: stmts } } }
 
     rule statements() -> Vec<Statement>
         = _ ss:(statement() ** _) _ rs:("return" es:((_ e:expression() _ { e }) ** ",") { Statement::Return(es) })? {
@@ -82,12 +82,12 @@ peg::parser!(pub grammar parser() for str {
         --
         a:(@) _ "&&" _ b:@ { Expression::LogicalAnd(Box::new(a), Box::new(b)) }
         --
-        a:@ _ "==" _ b:(@) { function_expr("__eq", vec![a, b]) }
-        a:@ _ "!=" _ b:(@) { Expression::LogicalNot(Box::new(function_expr("__eq", vec![a, b]))) }
-        a:@ _ "<"  _ b:(@) { function_expr("__lt", vec![a, b]) }
-        a:@ _ "<=" _ b:(@) { function_expr("__le", vec![a, b]) }
-        a:@ _ ">"  _ b:(@) { Expression::LogicalNot(Box::new(function_expr("__le", vec![a, b]))) }
-        a:@ _ ">=" _ b:(@) { Expression::LogicalNot(Box::new(function_expr("__lt", vec![a, b]))) }
+        a:(@) _ "==" _ b:@ { function_expr("__eq", vec![a, b]) }
+        a:(@) _ "!=" _ b:@ { Expression::LogicalNot(Box::new(function_expr("__eq", vec![a, b]))) }
+        a:(@) _ !type_args() "<"  _ b:@ { function_expr("__lt", vec![a, b]) }
+        a:(@) _ "<=" _ b:@ { function_expr("__le", vec![a, b]) }
+        a:(@) _ ">"  _ b:@ { Expression::LogicalNot(Box::new(function_expr("__le", vec![a, b]))) }
+        a:(@) _ ">=" _ b:@ { Expression::LogicalNot(Box::new(function_expr("__lt", vec![a, b]))) }
         --
         a:(@) _ "+" _ b:@ { function_expr("__add", vec![a, b]) }
         a:(@) _ "-" _ b:@ { function_expr("__sub", vec![a, b]) }
@@ -97,12 +97,16 @@ peg::parser!(pub grammar parser() for str {
         a:(@) _ idiv_op() _ b:@ { function_expr("__idiv", vec![a, b]) }
         a:(@) _ "%" _ b:@ { function_expr("__mod", vec![a, b]) }
         --
+        "-" _ e:@ { function_expr("__neg", vec![e]) }
+        "!" _ e:@ { Expression::LogicalNot(Box::new(e)) }
+        --
         a:@ _ "^" _ b:(@) { function_expr("__pow", vec![a, b]) }
         --
-        "len!" _ a:(@) { function_expr("__len", vec![a]) }
-        a:(@) _ "[" _ b:expression() _ "]" { Expression::Index { table: Box::new(a), index: Box::new(b) } }
-        a:(@) _ "(" _ args:((_ e:expression() _ {e}) ** ",") ")" { Expression::Call { function: Box::new(a), arguments: args } }
-        a:(@) _ "." _ b:identifier() { Expression::Index { table: Box::new(a), index: Box::new(Expression::Literal(Literal::String(b))) } }
+        "len!" _ a:@ { function_expr("__len", vec![a]) }
+        a:@ _ "[" _ b:expression() _ "]" { Expression::Index { table: Box::new(a), index: Box::new(b) } }
+        a:@ _ "(" _ args:((_ e:expression() _ {e}) ** ",") ")" { Expression::Call { function: Box::new(a), arguments: args } }
+        a:@ _ ts:type_args() { Expression::TypeResolve(Box::new(a), ts) }
+        a:@ _ "." _ b:identifier() { Expression::Index { table: Box::new(a), index: Box::new(Expression::Literal(Literal::String(b))) } }
         u:unary_op() { u }
     }
 
@@ -124,11 +128,10 @@ peg::parser!(pub grammar parser() for str {
             }
             Expression::Table(tes)
         }
-        / "-" _ e:expression() { function_expr("__neg", vec![e]) }
-        / "!" _ e:expression() { Expression::LogicalNot(Box::new(e)) }
         / f:function() { Expression::Fn(f) }
         / i:identifier() { Expression::Variable(i) }
         / l:literal() { Expression::Literal(l) }
+        / "()" { Expression::Nil }
 
     rule table_entry() -> (Option<TableKey>, Expression)
         = k:literal() _ ":" _ v:expression() { (Some(TableKey::Literal(k)), v) }
@@ -136,11 +139,11 @@ peg::parser!(pub grammar parser() for str {
         / "[" _ k:expression() _ "]" _ ":" _ v:expression() { (Some(TableKey::Expression(k)), v) }
 
     rule function() -> Function
-        = "fn" _
+        = "fn" _ tps:type_params() _
         "(" params:((_ i:identifier() _ ":" _ t:type_() {(i, t)}) ** ",") ")" _
         rt:ret_types()?
         "{" _ stmts:statements() _ "}"
-        { Function { parameters: params, return_types: rt, body: stmts } }
+        { Function { type_params: tps, parameters: params, return_types: rt, body: stmts } }
 
     rule identifier() -> String
         = quiet!{ !keyword() n:$(['a'..='z' | 'A'..='Z' | '_']['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*) { n.to_owned() } }
@@ -160,7 +163,7 @@ peg::parser!(pub grammar parser() for str {
         / s:string() { Literal::String(s) }
 
     rule type_() -> Type = precedence!{
-        a:@ _ "|" _ b:(@) { Type::Union(vec![a, b]).normalize() }
+        a:(@) _ "|" _ b:@ { Type::Union(vec![a, b]).normalize() }
         --
         // TODO: {, [str]: num}
         "{" _ cs:((_ t:type_table_entry() _ { t }) ** ",") ","? ts:((_ "[" k:$("num" / "str" / "bool" / "table" / "fn") "]" _ ":" _ v:type_() _ { (k, v) }) ** ",") ","? _ "}"
@@ -207,6 +210,13 @@ peg::parser!(pub grammar parser() for str {
         / "unknown" { Type::Unknown }
         / "any" { Type::Any }
         / l:literal() { Type::Const(l.to_const_data()) }
+
+    rule type_params() -> Vec<String>
+        = "<" _ ts:((_ t:identifier() _ { t }) ++ ",") ">" _ { ts }
+        / { vec![] }
+
+    rule type_args() -> Vec<Type>
+        = "<" _ ts:((_ t:type_() _ { t }) ++ ",") ">" _ { ts }
 
     rule string() -> String
         = "\"" s:$([^'"']*) "\"" { s.to_owned() }
@@ -289,9 +299,46 @@ fn f() { # a
   # b
 }
 "#,
+        r#"
+fn f<T>(a: T) -> T {
+    return a
+}
+let a: num = f<num>(1)
+"#,
+r#"len!x + 1"#
     ];
     for program in programs.iter() {
         let defs = parser::program(program).unwrap();
         gilder::assert_golden!(format!("{:?}", defs));
     }
+}
+
+#[test]
+fn peg_test() {
+    peg::parser!(pub grammar parser() for str {
+        pub rule binary_op() -> String = precedence!{
+            a:(@) "!" b:@ { format!("{} ! {}", a, b) }
+            --
+            a:@ "!a!" { format!("{} !a!", a) }
+            "a" { format!("a") }
+        }
+    });
+    dbg!(parser::binary_op("a!a!").err());
+}
+
+#[test]
+fn peg_test2() {
+    peg::parser!(pub grammar parser() for str {
+        pub rule binary_op() -> String = precedence!{
+            a:(@) "+" b:@ { format!("({} + {})", a, b) }
+            a:(@) "-" b:@ { format!("({} - {})", a, b) }
+            --
+            a:(@) "*" b:@ { format!("({} * {})", a, b) }
+            a:(@) "/" b:@ { format!("({} / {})", a, b) }
+            --
+            s:$(['a'..'z']+) { s.to_owned() }
+        }
+    });
+    dbg!(parser::binary_op("a+b*c").unwrap());
+    dbg!(parser::binary_op("a*b+c").unwrap());
 }

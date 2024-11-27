@@ -276,6 +276,12 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
             writer.write_str("not ")?;
             expression(writer, e)?;
         }
+        ast::Expression::TypeResolve(e, _) => {
+            expression(writer, e)?;
+        }
+        Expression::Nil => {
+            writer.write_str("nil")?;
+        }
     }
     Ok(())
 }
