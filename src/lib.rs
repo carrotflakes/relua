@@ -11,7 +11,7 @@ use std::collections::HashMap;
 pub fn compile(src: &str) -> Result<String, String> {
     let prog = front::parser::program(src).map_err(|e| e.to_string())?;
 
-    type_check::check_program(default_bindings(), &prog)?;
+    type_check::Context::from_symbol_table(default_bindings()).check_program(&prog)?;
 
     let mut res = String::new();
     lua::write_lua(&mut res, &prog).map_err(|e| e.to_string())?;
@@ -24,7 +24,7 @@ pub fn compile_with_bindings(
 ) -> Result<String, String> {
     let prog = front::parser::program(src).map_err(|e| e.to_string())?;
 
-    type_check::check_program(bindings, &prog)?;
+    type_check::Context::from_symbol_table(bindings).check_program(&prog)?;
 
     let mut res = String::new();
     lua::write_lua(&mut res, &prog).map_err(|e| e.to_string())?;

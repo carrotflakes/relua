@@ -4,241 +4,284 @@ use std::ops::Deref;
 use crate::ast;
 use crate::r#type::{ConstData, Type, TypeTable};
 
+pub struct Context {
+    symbol_table: HashMap<String, Type>,
+    type_table: HashMap<String, Type>,
+}
+
 enum ReturnType {
     Fixed(Vec<Type>),
     Infer(Vec<Vec<Type>>),
 }
 
-pub fn check_program(
-    bindings: HashMap<String, Type>,
-    stmts: &[ast::Statement],
-) -> Result<Vec<Type>, String> {
-    let mut return_types = ReturnType::Infer(vec![]);
-
-    check_statements(bindings, stmts, &mut return_types)?;
-
-    Ok(return_types.into_types())
-}
-
-fn check_function(
-    mut bindings: HashMap<String, Type>,
-    function: &ast::Function,
-) -> Result<Vec<Type>, String> {
-    for (name, type_) in &function.parameters {
-        bindings.insert(name.clone(), type_.clone());
+impl Context {
+    pub fn from_symbol_table(symbol_table: HashMap<String, Type>) -> Self {
+        Self {
+            symbol_table,
+            type_table: HashMap::new(),
+        }
     }
 
-    let mut ret_types = match &function.return_types {
-        Some(t) => ReturnType::Fixed(t.clone()),
-        None => ReturnType::Infer(vec![]),
-    };
+    fn child(&self) -> Self {
+        Self {
+            symbol_table: self.symbol_table.clone(),
+            type_table: self.type_table.clone(),
+        }
+    }
 
-    check_statements(bindings, &function.body, &mut ret_types)?;
+    fn insert(&mut self, name: String, type_: Type) {
+        self.symbol_table.insert(name, type_);
+    }
 
-    Ok(ret_types.into_types())
-}
+    fn get(&self, name: &str) -> Option<&Type> {
+        self.symbol_table.get(name)
+    }
 
-fn check_statements(
-    mut bindings: HashMap<String, Type>,
-    stmts: &[ast::Statement],
-    return_type: &mut ReturnType,
-) -> Result<(), String> {
-    for stmt in stmts {
-        match stmt {
-            ast::Statement::Expression(expression) => {
-                check_expression(bindings.clone(), expression)?;
-            }
-            ast::Statement::Fn { name, function } => {
-                // Add function to bindings to allow recursion
-                bindings.insert(
-                    name.clone(),
-                    Type::Function(
-                        function.parameters.iter().map(|(_, t)| t.clone()).collect(),
-                        function.return_types.clone().unwrap_or_else(|| vec![]), // unknown?
-                    ),
-                );
+    fn resolve_type(&self, type_: &Type) -> Result<Type, String> {
+        type_.resolve(&self.type_table)
+    }
 
-                let ret_types = check_function(bindings.clone(), function)?;
-                bindings.insert(
-                    name.clone(),
-                    Type::Function(
-                        function.parameters.iter().map(|(_, t)| t.clone()).collect(),
-                        ret_types,
-                    ),
-                );
-            }
-            ast::Statement::Let(vars, exprs) => {
-                if exprs.len() == 1 {
-                    let actual = check_expression(bindings.clone(), &exprs[0])?;
-                    for i in 0..vars.len() {
-                        let var = &vars[i];
-                        let actual = actual.get(i).unwrap_or(&Type::Nil).clone();
-                        if let Some(expect) = &var.1 {
-                            type_match(expect, &actual)?;
-                            bindings.insert(var.0.clone(), expect.clone());
-                        } else {
-                            bindings.insert(var.0.clone(), actual);
+    fn resolve_types<'a>(&self, iter: impl Iterator<Item = &'a Type>) -> Result<Vec<Type>, String> {
+        let mut types = vec![];
+        for t in iter {
+            types.push(t.resolve(&self.type_table)?);
+        }
+        Ok(types)
+    }
+
+    pub fn check_program(&self, stmts: &[ast::Statement]) -> Result<Vec<Type>, String> {
+        let mut return_types = ReturnType::Infer(vec![]);
+
+        self.check_statements(stmts, &mut return_types)?;
+
+        Ok(return_types.into_types())
+    }
+
+    fn check_statements(
+        &self,
+        stmts: &[ast::Statement],
+        return_type: &mut ReturnType,
+    ) -> Result<(), String> {
+        let mut ctx = self.child();
+
+        for stmt in stmts {
+            match stmt {
+                ast::Statement::Expression(expression) => {
+                    ctx.check_expression(expression)?;
+                }
+                ast::Statement::Fn { name, function } => {
+                    let params = ctx.resolve_types(function.parameters.iter().map(|(_, t)| t))?;
+
+                    // Add function to bindings to allow recursion
+                    ctx.insert(
+                        name.clone(),
+                        Type::Function(
+                            params.clone(),
+                            if let Some(t) = &function.return_types {
+                                ctx.resolve_types(t.iter())?
+                            } else {
+                                vec![]
+                            }, // unknown?
+                        ),
+                    );
+
+                    let ret_types = ctx.check_function(function)?;
+                    ctx.insert(name.clone(), Type::Function(params, ret_types));
+                }
+                ast::Statement::Let(vars, exprs) => {
+                    if exprs.len() == 1 {
+                        let actual = ctx.check_expression(&exprs[0])?;
+                        for i in 0..vars.len() {
+                            let var = &vars[i];
+                            let actual = actual.get(i).unwrap_or(&Type::Nil).clone();
+                            if let Some(expect) = &var.1 {
+                                let expect = ctx.resolve_type(expect)?;
+                                type_match(&expect, &actual)?;
+                                ctx.insert(var.0.clone(), expect.clone());
+                            } else {
+                                ctx.insert(var.0.clone(), actual);
+                            }
                         }
-                    }
-                } else {
-                    for i in 0..vars.len() {
-                        let var = &vars[i];
-                        let actual = check_expression(bindings.clone(), &exprs[i])?;
-                        if let Some(expect) = &var.1 {
-                            type_match(expect, &actual[0])?;
-                            bindings.insert(var.0.clone(), expect.clone());
-                        } else {
-                            bindings.insert(var.0.clone(), actual[0].clone());
+                    } else {
+                        for i in 0..vars.len() {
+                            let var = &vars[i];
+                            let actual = ctx.check_expression(&exprs[i])?;
+                            if let Some(expect) = &var.1 {
+                                let expect = ctx.resolve_type(expect)?;
+                                type_match(&expect, &actual[0])?;
+                                ctx.insert(var.0.clone(), expect.clone());
+                            } else {
+                                ctx.insert(var.0.clone(), actual[0].clone());
+                            }
                         }
                     }
                 }
-            }
-            ast::Statement::Assignment { vars, exprs } => {
-                let mut var_types = vec![];
-                for var in vars {
-                    let var_type = match var {
-                        ast::LValue::Variable(name) => bindings
-                            .get(name)
-                            .ok_or_else(|| format!("Variable not found: {}", name))?
-                            .clone(),
-                        ast::LValue::Index(table, index) => {
-                            let table_type = check_expression(bindings.clone(), table)?[0].clone();
-                            let Type::Table(table_type) = table_type else {
-                                return Err("Not a table".to_string());
-                            };
-                            let index_type = check_expression(bindings.clone(), index)?[0].clone();
-                            check_table(&table_type, &index_type)?
-                        }
-                    };
-                    var_types.push(var_type);
-                }
-                if exprs.len() == 1 {
-                    let actual = check_expression(bindings.clone(), &exprs[0])?;
-                    for i in 0..var_types.len() {
-                        type_match(&var_types[i], actual.get(i).unwrap_or(&Type::Nil))?;
-                    }
-                } else {
-                    for i in 0..var_types.len().max(exprs.len()) {
-                        let actual = if i < exprs.len() {
-                            check_expression(bindings.clone(), &exprs[i])?[0].clone()
-                        } else {
-                            Type::Nil
+                ast::Statement::Assignment { vars, exprs } => {
+                    let mut var_types = vec![];
+                    for var in vars {
+                        let var_type = match var {
+                            ast::LValue::Variable(name) => ctx
+                                .get(name)
+                                .ok_or_else(|| format!("Variable not found: {}", name))?
+                                .clone(),
+                            ast::LValue::Index(table, index) => {
+                                let table_type = ctx.check_expression(table)?[0].clone();
+                                let Type::Table(table_type) = table_type else {
+                                    return Err("Not a table".to_string());
+                                };
+                                let index_type = ctx.check_expression(index)?[0].clone();
+                                check_table(&table_type, &index_type)?
+                            }
                         };
-                        type_match(&var_types[i], &actual)?;
+                        var_types.push(var_type);
                     }
-                }
-            }
-            ast::Statement::If {
-                condition,
-                then,
-                else_,
-            } => {
-                check_expression(bindings.clone(), condition)?;
-                check_statements(bindings.clone(), then, return_type)?;
-                check_statements(bindings.clone(), else_, return_type)?;
-            }
-            ast::Statement::While { condition, body } => {
-                check_expression(bindings.clone(), condition)?;
-                check_statements(bindings.clone(), body, return_type)?;
-            }
-            ast::Statement::ForNumeric {
-                variable,
-                start,
-                end,
-                step,
-                body,
-            } => {
-                let start_type = check_expression(bindings.clone(), start)?[0].clone();
-                type_match(&Type::Number, &start_type)?;
-                let end_type = check_expression(bindings.clone(), end)?[0].clone();
-                type_match(&Type::Number, &end_type)?;
-                if let Some(step) = step {
-                    let step_type = check_expression(bindings.clone(), step)?[0].clone();
-                    type_match(&Type::Number, &step_type)?;
-                }
-                let mut bindings = bindings.clone();
-                bindings.insert(variable.clone(), Type::Number);
-                check_statements(bindings, body, return_type)?;
-            }
-            ast::Statement::ForGeneric {
-                variables,
-                exprs,
-                body,
-            } => {
-                // TODO: type check
-                for expr in exprs {
-                    check_expression(bindings.clone(), expr)?;
-                }
-                let mut bindings = bindings.clone();
-                for (name, type_) in variables {
-                    bindings.insert(name.clone(), type_.clone().unwrap_or(Type::Any));
-                }
-                check_statements(bindings, body, return_type)?;
-            }
-            ast::Statement::Return(exprs) => {
-                if exprs.len() == 1 {
-                    let actual = check_expression(bindings.clone(), &exprs[0])?;
-                    match return_type {
-                        ReturnType::Fixed(expect) => {
-                            for i in 0..expect.len() {
-                                type_match(&expect[i], actual.get(i).unwrap_or(&Type::Nil))?;
-                            }
+                    if exprs.len() == 1 {
+                        let actual = ctx.check_expression(&exprs[0])?;
+                        for i in 0..var_types.len() {
+                            let expect = ctx.resolve_type(&var_types[i])?;
+                            type_match(&expect, actual.get(i).unwrap_or(&Type::Nil))?;
                         }
-                        ReturnType::Infer(typess) => {
-                            typess.push(actual);
+                    } else {
+                        for i in 0..var_types.len().max(exprs.len()) {
+                            let actual = if i < exprs.len() {
+                                ctx.check_expression(&exprs[i])?[0].clone()
+                            } else {
+                                Type::Nil
+                            };
+                            let expect = ctx.resolve_type(&var_types[i])?;
+                            type_match(&expect, &actual)?;
                         }
                     }
-                } else {
-                    let mut actuals = vec![];
+                }
+                ast::Statement::If {
+                    condition,
+                    then,
+                    else_,
+                } => {
+                    ctx.check_expression(condition)?;
+                    ctx.check_statements(then, return_type)?;
+                    ctx.check_statements(else_, return_type)?;
+                }
+                ast::Statement::While { condition, body } => {
+                    ctx.check_expression(condition)?;
+                    ctx.check_statements(body, return_type)?;
+                }
+                ast::Statement::ForNumeric {
+                    variable,
+                    start,
+                    end,
+                    step,
+                    body,
+                } => {
+                    let start_type = ctx.check_expression(start)?[0].clone();
+                    type_match(&Type::Number, &start_type)?;
+                    let end_type = ctx.check_expression(end)?[0].clone();
+                    type_match(&Type::Number, &end_type)?;
+                    if let Some(step) = step {
+                        let step_type = ctx.check_expression(step)?[0].clone();
+                        type_match(&Type::Number, &step_type)?;
+                    }
+                    let mut ctx = ctx.child();
+                    ctx.insert(variable.clone(), Type::Number);
+                    ctx.check_statements(body, return_type)?;
+                }
+                ast::Statement::ForGeneric {
+                    variables,
+                    exprs,
+                    body,
+                } => {
+                    // TODO: type check
                     for expr in exprs {
-                        let actual = check_expression(bindings.clone(), expr)?;
-                        actuals.push(actual[0].clone());
+                        ctx.check_expression(expr)?;
                     }
-                    match return_type {
-                        ReturnType::Fixed(expect) => {
-                            for i in 0..expect.len() {
-                                type_match(&expect[i], actuals.get(i).unwrap_or(&Type::Nil))?;
+                    let mut ctx = ctx.child();
+                    for (name, type_) in variables {
+                        ctx.insert(name.clone(), type_.clone().unwrap_or(Type::Any));
+                    }
+                    ctx.check_statements(body, return_type)?;
+                }
+                ast::Statement::Return(exprs) => {
+                    if exprs.len() == 1 {
+                        let actual = ctx.check_expression(&exprs[0])?;
+                        match return_type {
+                            ReturnType::Fixed(expect) => {
+                                for i in 0..expect.len() {
+                                    type_match(&expect[i], actual.get(i).unwrap_or(&Type::Nil))?;
+                                }
+                            }
+                            ReturnType::Infer(typess) => {
+                                typess.push(actual);
                             }
                         }
-                        ReturnType::Infer(typess) => {
-                            typess.push(actuals);
+                    } else {
+                        let mut actuals = vec![];
+                        for expr in exprs {
+                            let actual = ctx.check_expression(expr)?;
+                            actuals.push(actual[0].clone());
+                        }
+                        match return_type {
+                            ReturnType::Fixed(expect) => {
+                                for i in 0..expect.len() {
+                                    type_match(&expect[i], actuals.get(i).unwrap_or(&Type::Nil))?;
+                                }
+                            }
+                            ReturnType::Infer(typess) => {
+                                typess.push(actuals);
+                            }
                         }
                     }
                 }
+                ast::Statement::TypeAlias(name, type_) => {
+                    ctx.type_table.insert(name.clone(), type_.clone());
+                }
             }
         }
+        Ok(())
     }
-    Ok(())
-}
 
-fn check_expression(
-    bindings: HashMap<String, Type>,
-    expr: &ast::Expression,
-) -> Result<Vec<Type>, String> {
-    Ok(match expr {
-        ast::Expression::Literal(literal) => {
-            let val = match literal {
-                ast::Literal::Number(n) => ConstData::try_from_f64(*n)
-                    .map(Type::Const)
-                    .unwrap_or(Type::Number),
-                ast::Literal::Bool(b) => Type::Const(ConstData::Bool(*b)),
-                ast::Literal::String(s) => Type::Const(ConstData::String(s.clone())),
-            };
-            vec![val]
+    fn check_function(&self, function: &ast::Function) -> Result<Vec<Type>, String> {
+        let mut ctx = self.child();
+
+        for (name, type_) in &function.parameters {
+            ctx.insert(name.clone(), self.resolve_type(type_)?);
         }
-        ast::Expression::Variable(name) => {
-            let val = bindings
-                .get(name)
-                .ok_or_else(|| format!("Variable not found: {}", name))?
-                .clone();
-            vec![val]
-        }
-        ast::Expression::Call {
-            function,
-            arguments,
-        } => {
-            let func_type =
-                if let ast::Expression::Literal(ast::Literal::String(f)) = function.deref() {
+
+        let mut ret_types = match &function.return_types {
+            Some(t) => ReturnType::Fixed(self.resolve_types(t.iter())?),
+            None => ReturnType::Infer(vec![]),
+        };
+
+        ctx.check_statements(&function.body, &mut ret_types)?;
+
+        Ok(ret_types.into_types())
+    }
+
+    fn check_expression(&self, expr: &ast::Expression) -> Result<Vec<Type>, String> {
+        Ok(match expr {
+            ast::Expression::Literal(literal) => {
+                let val = match literal {
+                    ast::Literal::Number(n) => ConstData::try_from_f64(*n)
+                        .map(Type::Const)
+                        .unwrap_or(Type::Number),
+                    ast::Literal::Bool(b) => Type::Const(ConstData::Bool(*b)),
+                    ast::Literal::String(s) => Type::Const(ConstData::String(s.clone())),
+                };
+                vec![val]
+            }
+            ast::Expression::Variable(name) => {
+                let val = self
+                    .get(name)
+                    .ok_or_else(|| format!("Variable not found: {}", name))?
+                    .clone();
+                vec![val]
+            }
+            ast::Expression::Call {
+                function,
+                arguments,
+            } => {
+                let func_type = if let ast::Expression::Literal(ast::Literal::String(f)) =
+                    function.deref()
+                {
                     match f.as_str() {
                         "__eq" => Type::Function(vec![Type::Any, Type::Any], vec![Type::Bool]),
                         "__lt" | "__le" => {
@@ -255,112 +298,115 @@ fn check_expression(
                             ])],
                             vec![Type::Number],
                         ),
-                        _ => check_expression(bindings.clone(), function)?[0].clone(),
+                        _ => self.check_expression(function)?[0].clone(),
                     }
                 } else {
-                    check_expression(bindings.clone(), function)?[0].clone()
+                    self.check_expression(function)?[0].clone()
                 };
 
-            if let Type::Any = func_type {
-                for arg in arguments {
-                    check_expression(bindings.clone(), arg)?;
-                }
-                return Ok(vec![Type::Any]); // TODO
-            }
-
-            if let Type::Function(params, return_types) = func_type {
-                if arguments.len() == 1 {
-                    let actual = check_expression(bindings.clone(), &arguments[0])?;
-                    for i in 0..params.len() {
-                        type_match(&params[i], actual.get(i).unwrap_or(&Type::Nil))?;
+                if let Type::Any = func_type {
+                    for arg in arguments {
+                        self.check_expression(arg)?;
                     }
+                    return Ok(vec![Type::Any]); // TODO
+                }
+
+                if let Type::Function(params, return_types) = func_type {
+                    if arguments.len() == 1 {
+                        let actual = self.check_expression(&arguments[0])?;
+                        for i in 0..params.len() {
+                            let param = self.resolve_type(&params[i])?;
+                            type_match(&param, actual.get(i).unwrap_or(&Type::Nil))?;
+                        }
+                    } else {
+                        for i in 0..params.len() {
+                            let param = self.resolve_type(&params[i])?;
+                            let actual = if let Some(arg) = arguments.get(i) {
+                                self.check_expression(arg)?[0].clone()
+                            } else {
+                                Type::Nil
+                            };
+                            type_match(&param, &actual)?;
+                        }
+                    }
+                    return_types
                 } else {
-                    for i in 0..params.len() {
-                        let actual = if let Some(arg) = arguments.get(i) {
-                            check_expression(bindings.clone(), arg)?[0].clone()
-                        } else {
-                            Type::Nil
-                        };
-                        type_match(&params[i], &actual)?;
-                    }
+                    return Err("Not a function".to_string());
                 }
-                return_types
-            } else {
-                return Err("Not a function".to_string());
             }
-        }
-        ast::Expression::Index { table, index } => {
-            let table_types = check_expression(bindings.clone(), table)?;
-            let table_type = &table_types[0];
-            let Type::Table(table_type) = table_type else {
-                return Err("Not a table".to_string());
-            };
-            let index_types = check_expression(bindings.clone(), index)?;
-            let index_type = &index_types[0];
-            vec![check_table(&table_type, &index_type)?]
-        }
-        ast::Expression::Fn(function) => {
-            let ret_types = check_function(bindings.clone(), function)?;
-            vec![Type::Function(
-                function.parameters.iter().map(|(_, t)| t.clone()).collect(),
-                ret_types,
-            )]
-        }
-        ast::Expression::Table(vec) => {
-            let mut consts = vec![];
-            let mut number = vec![];
-            let mut string = vec![];
-            let mut bool = vec![];
-            let mut table = vec![];
-            let mut functions = vec![];
+            ast::Expression::Index { table, index } => {
+                let table_types = self.check_expression(table)?;
+                let table_type = &table_types[0];
+                let Type::Table(table_type) = table_type else {
+                    return Err("Not a table".to_string());
+                };
+                let index_types = self.check_expression(index)?;
+                let index_type = &index_types[0];
+                vec![check_table(&table_type, &index_type)?]
+            }
+            ast::Expression::Fn(function) => {
+                let ret_types = self.check_function(function)?;
+                vec![Type::Function(
+                    function.parameters.iter().map(|(_, t)| t.clone()).collect(),
+                    ret_types,
+                )]
+            }
+            ast::Expression::Table(vec) => {
+                let mut consts = vec![];
+                let mut number = vec![];
+                let mut string = vec![];
+                let mut bool = vec![];
+                let mut table = vec![];
+                let mut functions = vec![];
 
-            for (key, value) in vec {
-                let value_types = check_expression(bindings.clone(), value)?;
-                let value_type = value_types[0].clone();
-                match key {
-                    ast::TableKey::Literal(literal) => {
-                        consts.push((literal.to_const_data(), value_type))
-                    }
-                    ast::TableKey::Expression(e) => {
-                        let key_types = check_expression(bindings.clone(), e)?;
-                        let key_type = key_types[0].clone();
-                        match key_type {
-                            Type::Number => number.push(value_type),
-                            Type::String => string.push(value_type),
-                            Type::Bool => bool.push(value_type),
-                            Type::Const(const_data) => consts.push((const_data, value_type)),
-                            Type::Table(_) => table.push(value_type),
-                            Type::Function(_, _) => functions.push(value_type),
-                            t => return Err(format!("Invalid table key type: {}", t)),
+                for (key, value) in vec {
+                    let value_types = self.check_expression(value)?;
+                    let value_type = value_types[0].clone();
+                    match key {
+                        ast::TableKey::Literal(literal) => {
+                            consts.push((literal.to_const_data(), value_type))
+                        }
+                        ast::TableKey::Expression(e) => {
+                            let key_types = self.check_expression(e)?;
+                            let key_type = key_types[0].clone();
+                            match key_type {
+                                Type::Number => number.push(value_type),
+                                Type::String => string.push(value_type),
+                                Type::Bool => bool.push(value_type),
+                                Type::Const(const_data) => consts.push((const_data, value_type)),
+                                Type::Table(_) => table.push(value_type),
+                                Type::Function(_, _) => functions.push(value_type),
+                                t => return Err(format!("Invalid table key type: {}", t)),
+                            }
                         }
                     }
                 }
-            }
 
-            vec![Type::Table(TypeTable {
-                consts,
-                number: Type::from_types(number).map(Box::new),
-                string: Type::from_types(string).map(Box::new),
-                bool: Type::from_types(bool).map(Box::new),
-                table: Type::from_types(table).map(Box::new),
-                function: Type::from_types(functions).map(Box::new),
-            })]
-        }
-        ast::Expression::LogicalAnd(a, b) => {
-            let a = check_expression(bindings.clone(), a)?;
-            let b = check_expression(bindings.clone(), b)?;
-            vec![Type::from_types(vec![a[0].clone(), b[0].clone()]).unwrap()]
-        }
-        ast::Expression::LogicalOr(a, b) => {
-            let a = check_expression(bindings.clone(), a)?;
-            let b = check_expression(bindings.clone(), b)?;
-            vec![Type::from_types(vec![a[0].clone(), b[0].clone()]).unwrap()]
-        }
-        ast::Expression::LogicalNot(e) => {
-            check_expression(bindings.clone(), e)?;
-            vec![Type::Bool]
-        }
-    })
+                vec![Type::Table(TypeTable {
+                    consts,
+                    number: Type::from_types(number).map(Box::new),
+                    string: Type::from_types(string).map(Box::new),
+                    bool: Type::from_types(bool).map(Box::new),
+                    table: Type::from_types(table).map(Box::new),
+                    function: Type::from_types(functions).map(Box::new),
+                })]
+            }
+            ast::Expression::LogicalAnd(a, b) => {
+                let a = self.check_expression(a)?;
+                let b = self.check_expression(b)?;
+                vec![Type::from_types(vec![a[0].clone(), b[0].clone()]).unwrap()]
+            }
+            ast::Expression::LogicalOr(a, b) => {
+                let a = self.check_expression(a)?;
+                let b = self.check_expression(b)?;
+                vec![Type::from_types(vec![a[0].clone(), b[0].clone()]).unwrap()]
+            }
+            ast::Expression::LogicalNot(e) => {
+                self.check_expression(e)?;
+                vec![Type::Bool]
+            }
+        })
+    }
 }
 
 fn check_table(table_type: &TypeTable, index_type: &Type) -> Result<Type, String> {

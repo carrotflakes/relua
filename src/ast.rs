@@ -34,6 +34,7 @@ pub enum Statement {
         body: Vec<Statement>,
     },
     Return(Vec<Expression>),
+    TypeAlias(String, Type),
 }
 
 #[derive(Debug, Clone, PartialEq)]

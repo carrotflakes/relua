@@ -148,6 +148,7 @@ fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Re
                 statements(writer, body)?;
                 writer.write_str("end\n")?;
             }
+            ast::Statement::TypeAlias(_, _) => {}
         }
     }
     Ok(())

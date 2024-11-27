@@ -13,6 +13,8 @@ pub enum Type {
     Function(Vec<Type>, Vec<Type>),
 
     Const(ConstData),
+
+    Variable(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -69,6 +71,7 @@ impl Type {
                         .all(|(l, r)| l.include(r))
             }
             (Type::Function(_, _), _) => false,
+            (Type::Variable(_), _) => panic!("Var type should be resolved"),
         }
     }
 
@@ -116,6 +119,68 @@ impl Type {
             Some(Type::Union(types).normalize())
         }
     }
+
+    pub fn resolve(&self, map: &std::collections::HashMap<String, Type>) -> Result<Type, String> {
+        match self {
+            Type::Variable(name) => map
+                .get(name)
+                .cloned()
+                .ok_or_else(|| format!("Variable {} not found", name)),
+            Type::Union(types) => {
+                let mut types = types
+                    .iter()
+                    .map(|t| t.resolve(map))
+                    .collect::<Result<Vec<_>, _>>()?;
+                types.sort();
+                Ok(Type::from_types(types).unwrap())
+            }
+            Type::Table(TypeTable {
+                consts,
+                number,
+                string,
+                bool,
+                table,
+                function,
+            }) => Ok(Type::Table(TypeTable {
+                consts: consts
+                    .iter()
+                    .map(|(cd, t)| Ok((cd.clone(), t.resolve(map)?)))
+                    .collect::<Result<_, String>>()?,
+                number: number
+                    .as_ref()
+                    .map(|t| t.resolve(map))
+                    .transpose()?
+                    .map(Box::new),
+                string: string
+                    .as_ref()
+                    .map(|t| t.resolve(map))
+                    .transpose()?
+                    .map(Box::new),
+                bool: bool
+                    .as_ref()
+                    .map(|t| t.resolve(map))
+                    .transpose()?
+                    .map(Box::new),
+                table: table
+                    .as_ref()
+                    .map(|t| t.resolve(map))
+                    .transpose()?
+                    .map(Box::new),
+                function: function
+                    .as_ref()
+                    .map(|t| t.resolve(map))
+                    .transpose()?
+                    .map(Box::new),
+            })),
+            Type::Function(ps, r) => Ok(Type::Function(
+                ps.iter()
+                    .map(|t| t.resolve(map))
+                    .collect::<Result<_, _>>()?,
+                r.iter().map(|t| t.resolve(map)).collect::<Result<_, _>>()?,
+            )),
+            t => Ok(t.clone()),
+        }
+    }
 }
 
 impl std::fmt::Display for Type {
@@ -160,6 +225,7 @@ impl std::fmt::Display for Type {
                 ConstData::String(s) => write!(f, "{:?}", s),
                 ConstData::Bool(b) => write!(f, "{}", b),
             },
+            Type::Variable(name) => write!(f, "{}", name),
         }
     }
 }

@@ -30,6 +30,7 @@ peg::parser!(pub grammar parser() for str {
         / for_generic()
         / assignment()
         / def_function()
+        / type_alias()
         / e:expression() { Statement::Expression(e) }
 
     rule if_else() -> Statement
@@ -60,6 +61,9 @@ peg::parser!(pub grammar parser() for str {
                 exprs: es,
             }
         }
+
+    rule type_alias() -> Statement
+        = "type" _ name:identifier() _ "=" _ t:type_() { Statement::TypeAlias(name, t) }
 
     rule lval() -> LValue
         = t:expression() {?
@@ -128,7 +132,7 @@ peg::parser!(pub grammar parser() for str {
 
     rule table_entry() -> (Option<TableKey>, Expression)
         = k:literal() _ ":" _ v:expression() { (Some(TableKey::Literal(k)), v) }
-        / k:(k:identifier() _ ":" { TableKey::Literal(Literal::String(k)) })? _ v:expression() { (k, v) }
+        / k:(k:key() _ ":" { TableKey::Literal(Literal::String(k)) })? _ v:expression() { (k, v) }
         / "[" _ k:expression() _ "]" _ ":" _ v:expression() { (Some(TableKey::Expression(k)), v) }
 
     rule function() -> Function
@@ -142,8 +146,12 @@ peg::parser!(pub grammar parser() for str {
         = quiet!{ !keyword() n:$(['a'..='z' | 'A'..='Z' | '_']['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*) { n.to_owned() } }
         / expected!("identifier")
 
+    rule key() -> String
+        = quiet!{ n:$(['a'..='z' | 'A'..='Z' | '_']['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*) { n.to_owned() } }
+        / expected!("key")
+
     rule keyword() -> ()
-        = "fn" / "let"/ "if" / "else" / "while" / "for" / "in" / "return" / "true" / "false"
+        = "fn" / "let"/ "if" / "else" / "while" / "for" / "in" / "return" / "true" / "false" / "type"
 
     rule literal() -> Literal
         = n:$(['0'..='9']+ ("." ['0'..='9']*)?) { Literal::Number(n.parse().unwrap()) }
@@ -176,11 +184,12 @@ peg::parser!(pub grammar parser() for str {
         }
         a:type_function() { a }
         a:type_atom() { a }
+        i:identifier() { Type::Variable(i) }
     }
 
     rule type_table_entry() -> (Option<Literal>, Type)
         = k:literal() _ ":" _ v:type_() { (Some(k), v) }
-        / i:identifier() _ ":" _ t:type_() { (Some(Literal::String(i)), t) }
+        / i:key() _ ":" _ t:type_() { (Some(Literal::String(i)), t) }
         / t:type_() { (None, t) }
 
     rule type_function() -> Type

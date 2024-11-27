@@ -1,4 +1,4 @@
-use crate::{default_bindings, front::parser, lua::write_lua, type_check::check_program};
+use crate::{default_bindings, front::parser, lua::write_lua, type_check::Context};
 
 #[test]
 fn test() {
@@ -46,7 +46,7 @@ t[fn() -> () {}] = "a"
 let f: (num) -> () = fn(a: num, b: num) -> () {}
 let f: (num, num | ()) -> () = fn(a: num) -> () {}
 "#,
-r#"
+        r#"
 for i = 1, 10 {
     print(i)
 }
@@ -54,26 +54,30 @@ for i = 1, 10, 2 {
     print(i)
 }
 "#,
-r#"
+        r#"
 for k, v in pairs({1, 2, 3}) {
     print(k, v)
 }
 "#,
-r#"
+        r#"
 let a: num, b: num = 1, 2
 b, a = a, b
 "#,
-r#"
+        r#"
 fn f(a: num, b: str) -> (num, str) {
     return a, b
 }
 let a: num, b: str = f(1, "2")
 let a: num, b: bool = f(1, "2"), true
 "#,
+r#"
+type User = {type: "user", name: str}
+let a: User = {type: "user", name: "carrotflakes"}
+"#,
     ];
     for src in &srcs {
         let prog = parser::program(src).unwrap();
-        let res = check_program(default_bindings(), &prog);
+        let res = Context::from_symbol_table(default_bindings()).check_program(&prog);
         gilder::assert_golden!(format!("{:?}", res));
     }
     for src in &srcs {
@@ -98,7 +102,7 @@ let a: num, b: bool = f(1, "2"), true
     ];
     for src in &srcs {
         let prog = parser::program(src).unwrap();
-        let res = check_program(default_bindings(), &prog);
+        let res = Context::from_symbol_table(default_bindings()).check_program(&prog);
         gilder::assert_golden!(format!("{:?}", res));
     }
 }
