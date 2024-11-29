@@ -139,11 +139,17 @@ impl Context {
                                 .clone(),
                             ast::LValue::Index(table, index) => {
                                 let table_type = ctx.check_expression(table)?[0].clone();
-                                let Type::Table(table_type) = table_type else {
-                                    return Err("Not a table".to_string());
-                                };
-                                let index_type = ctx.check_expression(index)?[0].clone();
-                                check_table(&table_type, &index_type)?
+                                match table_type {
+                                    Type::Any => {
+                                        ctx.check_expression(index)?;
+                                        Type::Any
+                                    }
+                                    Type::Table(table_type) => {
+                                        let index_type = ctx.check_expression(index)?[0].clone();
+                                        check_table(&table_type, &index_type)?
+                                    }
+                                    _ => return Err(format!("Not a table: {}", table_type)),
+                                }
                             }
                         };
                         var_types.push(var_type);
@@ -351,12 +357,18 @@ impl Context {
             ast::Expression::Index { table, index } => {
                 let table_types = self.check_expression(table)?;
                 let table_type = &table_types[0];
-                let Type::Table(table_type) = table_type else {
-                    return Err("Not a table".to_string());
-                };
-                let index_types = self.check_expression(index)?;
-                let index_type = &index_types[0];
-                vec![check_table(&table_type, &index_type)?]
+                match table_type {
+                    Type::Any => {
+                        self.check_expression(index)?;
+                        return Ok(vec![Type::Any]);
+                    }
+                    Type::Table(table_type) => {
+                        let index_types = self.check_expression(index)?;
+                        let index_type = &index_types[0];
+                        vec![check_table(&table_type, &index_type)?]
+                    }
+                    _ => return Err(format!("Not a table: {}", table_type)),
+                }
             }
             ast::Expression::Fn(function) => {
                 if function.type_params.is_empty() {
