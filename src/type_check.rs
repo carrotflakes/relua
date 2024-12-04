@@ -250,6 +250,7 @@ impl Context {
                         }
                     }
                 }
+                ast::Statement::Break => {}
                 ast::Statement::TypeAlias(name, type_) => {
                     ctx.type_table.insert(name.clone(), type_.clone());
                 }

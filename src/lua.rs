@@ -23,6 +23,9 @@ fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Re
                     writer.write_str("\n")?;
                 }
             }
+            ast::Statement::Break => {
+                writer.write_str("break\n")?;
+            }
             ast::Statement::Expression(expr) => {
                 expression(writer, expr)?;
                 writer.write_str(";\n")?;

@@ -14,7 +14,7 @@ peg::parser!(pub grammar parser() for str {
         { Statement::Fn {name, function: Function { type_params: tps, parameters: params, return_types: rt, body: stmts } } }
 
     rule statements() -> Vec<Statement>
-        = _ ss:(statement() ** _) _ rs:("return" es:((_ e:expression() _ { e }) ** ",") { Statement::Return(es) })? {
+        = _ ss:(statement() ** _) _ rs:("return" es:((_ e:expression() _ { e }) ** ",") { Statement::Return(es) } / "break" { Statement::Break })? {
             let mut ss = ss;
             if let Some(r) = rs {
                 ss.push(r);
@@ -154,7 +154,7 @@ peg::parser!(pub grammar parser() for str {
         / expected!("key")
 
     rule keyword() -> ()
-        = "fn" / "let"/ "if" / "else" / "while" / "for" / "in" / "return" / "true" / "false" / "type"
+        = "fn" / "let"/ "if" / "else" / "while" / "for" / "in" / "return" / "break" / "true" / "false" / "type"
 
     rule literal() -> Literal
         = n:$(['0'..='9']+ ("." ['0'..='9']*)?) { Literal::Number(n.parse().unwrap()) }
@@ -305,7 +305,8 @@ fn f<T>(a: T) -> T {
 }
 let a: num = f<num>(1)
 "#,
-r#"len!x + 1"#
+r#"len!x + 1"#,
+r#"while true {break}break"#
     ];
     for program in programs.iter() {
         let defs = parser::program(program).unwrap();
