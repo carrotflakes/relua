@@ -1,6 +1,8 @@
 use crate::ast::*;
 use crate::r#type::{ConstData, Type, TypeTable};
 
+const KEYWORDS: [&str; 12] = ["fn", "let", "if", "else", "while", "for", "in", "return", "break", "true", "false", "type"];
+
 // https://docs.rs/peg/latest/peg/
 peg::parser!(pub grammar parser() for str {
     pub rule program() -> Vec<Statement>
@@ -146,15 +148,12 @@ peg::parser!(pub grammar parser() for str {
         { Function { type_params: tps, parameters: params, return_types: rt, body: stmts } }
 
     rule identifier() -> String
-        = quiet!{ !keyword() n:$(['a'..='z' | 'A'..='Z' | '_']['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*) { n.to_owned() } }
+        = quiet!{ n:$(['a'..='z' | 'A'..='Z' | '_']['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*) {? if !KEYWORDS.contains(&n) { Ok(n.to_owned()) } else { Err("Keyword is not a identifier") } } }
         / expected!("identifier")
 
     rule key() -> String
         = quiet!{ n:$(['a'..='z' | 'A'..='Z' | '_']['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*) { n.to_owned() } }
         / expected!("key")
-
-    rule keyword() -> ()
-        = "fn" / "let"/ "if" / "else" / "while" / "for" / "in" / "return" / "break" / "true" / "false" / "type"
 
     rule literal() -> Literal
         = n:$(['0'..='9']+ ("." ['0'..='9']*)?) { Literal::Number(n.parse().unwrap()) }
@@ -306,7 +305,8 @@ fn f<T>(a: T) -> T {
 let a: num = f<num>(1)
 "#,
 r#"len!x + 1"#,
-r#"while true {break}break"#
+r#"while true {break}break"#,
+r#"let input = 0"#
     ];
     for program in programs.iter() {
         let defs = parser::program(program).unwrap();
