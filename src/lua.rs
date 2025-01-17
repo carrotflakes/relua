@@ -157,6 +157,22 @@ fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Re
     Ok(())
 }
 
+fn parened_expression(
+    writer: &mut impl Write,
+    precedence: u8,
+    expr: &ast::Expression,
+) -> std::fmt::Result {
+    let p = expr.precedence() < precedence;
+    if p {
+        writer.write_str("(")?;
+    }
+    expression(writer, expr)?;
+    if p {
+        writer.write_str(")")?;
+    }
+    Ok(())
+}
+
 fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Result {
     match expr {
         ast::Expression::Literal(l) => {
@@ -173,38 +189,43 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
                 match f.as_str() {
                     "__len" => {
                         writer.write_str("#")?;
-                        expression(writer, &arguments[0])?;
+                        parened_expression(writer, 7, &arguments[0])?;
                         return Ok(());
                     }
                     "__neg" => {
                         writer.write_str("-")?;
-                        expression(writer, &arguments[0])?;
+                        parened_expression(writer, 7, &arguments[0])?;
                         return Ok(());
                     }
-                    "__eq" => Some("=="),
-                    "__lt" => Some("<"),
-                    "__le" => Some("<="),
-                    "__add" => Some("+"),
-                    "__sub" => Some("-"),
-                    "__mul" => Some("*"),
-                    "__div" => Some("/"),
-                    "__idiv" => Some("//"),
-                    "__mod" => Some("%"),
-                    "__pow" => Some("^"),
+                    "__eq" => Some(("==", true)),
+                    "__lt" => Some(("<", true)),
+                    "__le" => Some(("<=", true)),
+                    "__add" => Some(("+", true)),
+                    "__sub" => Some(("-", true)),
+                    "__mul" => Some(("*", true)),
+                    "__div" => Some(("/", true)),
+                    "__idiv" => Some(("//", true)),
+                    "__mod" => Some(("%", true)),
+                    "__pow" => Some(("^", false)),
                     _ => None,
                 }
             } else {
                 None
             };
-            if let Some(op) = op {
-                writer.write_str("(")?;
-                expression(writer, &arguments[0])?;
-                writer.write_str(op)?;
-                expression(writer, &arguments[1])?;
-                writer.write_str(")")?;
+            let p = expr.precedence();
+            if let Some((op, left)) = op {
+                if left {
+                    parened_expression(writer, p, &arguments[0])?;
+                    writer.write_str(op)?;
+                    parened_expression(writer, p + 1, &arguments[1])?;
+                } else {
+                    parened_expression(writer, p + 1, &arguments[0])?;
+                    writer.write_str(op)?;
+                    parened_expression(writer, p, &arguments[1])?;
+                }
                 return Ok(());
             }
-            expression(writer, &function)?;
+            parened_expression(writer, 10, &function)?;
             writer.write_str("(")?;
             for (i, arg) in arguments.iter().enumerate() {
                 if i > 0 {
@@ -215,9 +236,7 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
             writer.write_str(")")?;
         }
         ast::Expression::Index { table, index } => {
-            writer.write_str("(")?;
-            expression(writer, table)?;
-            writer.write_str(")")?;
+            parened_expression(writer, 10, table)?;
             writer.write_str("[")?;
             expression(writer, index)?;
             writer.write_str("]")?;
@@ -262,22 +281,18 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
             writer.write_str("}")?;
         }
         ast::Expression::LogicalAnd(a, b) => {
-            writer.write_str("(")?;
-            expression(writer, a)?;
+            parened_expression(writer, 2, a)?;
             writer.write_str(" and ")?;
-            expression(writer, b)?;
-            writer.write_str(")")?;
+            parened_expression(writer, 2, b)?;
         }
         ast::Expression::LogicalOr(a, b) => {
-            writer.write_str("(")?;
-            expression(writer, a)?;
+            parened_expression(writer, 1, a)?;
             writer.write_str(" or ")?;
-            expression(writer, b)?;
-            writer.write_str(")")?;
+            parened_expression(writer, 1, b)?;
         }
         ast::Expression::LogicalNot(e) => {
             writer.write_str("not ")?;
-            expression(writer, e)?;
+            parened_expression(writer, 7, e)?;
         }
         ast::Expression::TypeResolve(e, _) => {
             expression(writer, e)?;
@@ -317,4 +332,66 @@ fn literal_to_name(literal: &ast::Literal) -> Option<String> {
         }
         _ => None,
     }
+}
+
+impl Expression {
+    pub fn precedence(&self) -> u8 {
+        match self {
+            Expression::LogicalOr(_, _) => 1,
+            Expression::LogicalAnd(_, _) => 2,
+            Expression::Call {
+                function,
+                arguments: _,
+            } => {
+                if let Expression::Literal(Literal::String(op)) = &**function {
+                    match op.as_str() {
+                        "__eq" => 3,
+                        "__lt" => 3,
+                        "__le" => 3,
+                        "__add" => 5,
+                        "__sub" => 5,
+                        "__mul" => 6,
+                        "__div" => 6,
+                        "__idiv" => 6,
+                        "__mod" => 6,
+                        "__len" => 7,
+                        "__neg" => 7,
+                        "__pow" => 8,
+                        _ => panic!("unknown operator: {}", op),
+                    }
+                } else {
+                    10
+                }
+            }
+            Expression::LogicalNot(_) => 7,
+            Expression::Table(_) => 9,
+            Expression::Index { .. } => 10, //?
+            Expression::Fn(_) => 10,
+            Expression::TypeResolve(e, _) => e.precedence(),
+            Expression::Variable(_) => 10,
+            Expression::Literal(_) => 10,
+            Expression::Nil => 10,
+        }
+    }
+}
+
+#[test]
+fn test() {
+    use crate::front::parser;
+
+    fn test_case(src: &str) {
+        let prog = parser::program(src).unwrap();
+        let mut res = String::new();
+        write_lua(&mut res, &prog).unwrap();
+        gilder::assert_golden!(res);
+    }
+
+    test_case(r#"let x = 1 * 2 + (3 - 4)"#);
+    test_case(r#"let x = 1 * (2 + -3) ^ (4 + 5)"#);
+    test_case(r#"let x = 1 ^ 2 ^ 3"#);
+    test_case(r#"let x = 1 ^ (2 ^ 3)"#);
+    test_case(r#"let x = (1 ^ 2) ^ 3"#);
+    test_case(r#"let x = (1 + 2) > 3 - 4"#);
+    test_case(r#"let x = !(1 + (2 + 3)(4)[5](6))"#);
+    test_case(r#"let x = {} || () || {}"#);
 }
