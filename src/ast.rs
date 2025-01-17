@@ -1,42 +1,70 @@
 use crate::r#type::{ConstData, Type};
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Span(pub std::ops::Range<usize>);
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Spanned<T> {
+    pub node: T,
+    pub span: Span,
+}
+
+impl<T> Spanned<T> {
+    pub fn none(node: T) -> Self {
+        Spanned {
+            node,
+            span: Span(0..0),
+        }
+    }
+}
+
+impl<T> std::ops::Deref for Spanned<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.node
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
-    Expression(Expression),
-    Let(Vec<(String, Option<Type>)>, Vec<Expression>),
+    Expression(SpannedExpression),
+    Let(Vec<(String, Option<Type>)>, Vec<SpannedExpression>),
     Fn {
         name: String,
         function: Function,
     },
     Assignment {
         vars: Vec<LValue>,
-        exprs: Vec<Expression>,
+        exprs: Vec<SpannedExpression>,
     },
     If {
-        condition: Expression,
-        then: Vec<Statement>,
-        else_: Vec<Statement>,
+        condition: SpannedExpression,
+        then: Vec<SpannedStatement>,
+        else_: Vec<SpannedStatement>,
     },
     While {
-        condition: Expression,
-        body: Vec<Statement>,
+        condition: SpannedExpression,
+        body: Vec<SpannedStatement>,
     },
     ForNumeric {
         variable: String,
-        start: Expression,
-        end: Expression,
-        step: Option<Expression>,
-        body: Vec<Statement>,
+        start: SpannedExpression,
+        end: SpannedExpression,
+        step: Option<SpannedExpression>,
+        body: Vec<SpannedStatement>,
     },
     ForGeneric {
         variables: Vec<(String, Option<Type>)>,
-        exprs: Vec<Expression>,
-        body: Vec<Statement>,
+        exprs: Vec<SpannedExpression>,
+        body: Vec<SpannedStatement>,
     },
-    Return(Vec<Expression>),
+    Return(Vec<SpannedExpression>),
     Break,
     TypeAlias(String, Type),
 }
+
+pub type SpannedStatement = Spanned<Statement>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
@@ -44,39 +72,41 @@ pub enum Expression {
     Nil,
     Variable(String),
     Call {
-        function: Box<Expression>,
-        arguments: Vec<Expression>,
+        function: Box<SpannedExpression>,
+        arguments: Vec<SpannedExpression>,
     },
     Index {
-        table: Box<Expression>,
-        index: Box<Expression>,
+        table: Box<SpannedExpression>,
+        index: Box<SpannedExpression>,
     },
-    Table(Vec<(TableKey, Expression)>),
+    Table(Vec<(TableKey, SpannedExpression)>),
     Fn(Function),
-    LogicalAnd(Box<Expression>, Box<Expression>),
-    LogicalOr(Box<Expression>, Box<Expression>),
-    LogicalNot(Box<Expression>),
-    TypeResolve(Box<Expression>, Vec<Type>),
+    LogicalAnd(Box<SpannedExpression>, Box<SpannedExpression>),
+    LogicalOr(Box<SpannedExpression>, Box<SpannedExpression>),
+    LogicalNot(Box<SpannedExpression>),
+    TypeResolve(Box<SpannedExpression>, Vec<Type>),
 }
+
+pub type SpannedExpression = Spanned<Expression>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
     pub type_params: Vec<String>,
     pub parameters: Vec<(String, Type)>,
     pub return_types: Option<Vec<Type>>,
-    pub body: Vec<Statement>,
+    pub body: Vec<SpannedStatement>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum LValue {
     Variable(String),
-    Index(Box<Expression>, Box<Expression>),
+    Index(Box<SpannedExpression>, Box<SpannedExpression>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TableKey {
     Literal(Literal),
-    Expression(Expression),
+    Expression(SpannedExpression),
 }
 
 #[derive(Debug, Clone, PartialEq)]

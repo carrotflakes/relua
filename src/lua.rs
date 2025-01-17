@@ -1,14 +1,14 @@
-use std::{fmt::Write, ops::Deref};
+use std::fmt::Write;
 
 use crate::ast::{self, Expression, Literal};
 
-pub fn write_lua(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Result {
+pub fn write_lua(writer: &mut impl Write, stmts: &[ast::SpannedStatement]) -> std::fmt::Result {
     statements(writer, stmts)
 }
 
-fn statements(writer: &mut impl Write, stmts: &[ast::Statement]) -> std::fmt::Result {
+fn statements(writer: &mut impl Write, stmts: &[ast::SpannedStatement]) -> std::fmt::Result {
     for stmt in stmts {
-        match stmt {
+        match &**stmt {
             ast::Statement::Return(expr) => {
                 if expr.is_empty() {
                     writer.write_str("return\n")?;
@@ -185,7 +185,7 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
             function,
             arguments,
         } => {
-            let op = if let Expression::Literal(Literal::String(f)) = function.deref() {
+            let op = if let Expression::Literal(Literal::String(f)) = &***function {
                 match f.as_str() {
                     "__len" => {
                         writer.write_str("#")?;
@@ -343,7 +343,7 @@ impl Expression {
                 function,
                 arguments: _,
             } => {
-                if let Expression::Literal(Literal::String(op)) = &**function {
+                if let Expression::Literal(Literal::String(op)) = &***function {
                     match op.as_str() {
                         "__eq" => 3,
                         "__lt" => 3,

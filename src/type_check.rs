@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::ops::Deref;
 
 use crate::ast;
 use crate::r#type::{ConstData, Type, TypeTable};
@@ -49,7 +48,7 @@ impl Context {
         Ok(types)
     }
 
-    pub fn check_program(&self, stmts: &[ast::Statement]) -> Result<Vec<Type>, String> {
+    pub fn check_program(&self, stmts: &[ast::SpannedStatement]) -> Result<Vec<Type>, String> {
         let mut return_types = ReturnType::Infer(vec![]);
 
         self.check_statements(stmts, &mut return_types)?;
@@ -59,13 +58,13 @@ impl Context {
 
     fn check_statements(
         &self,
-        stmts: &[ast::Statement],
+        stmts: &[ast::SpannedStatement],
         return_type: &mut ReturnType,
     ) -> Result<(), String> {
         let mut ctx = self.child();
 
         for stmt in stmts {
-            match stmt {
+            match &**stmt {
                 ast::Statement::Expression(expression) => {
                     ctx.check_expression(expression)?;
                 }
@@ -109,7 +108,7 @@ impl Context {
                             let actual = actual.get(i).unwrap_or(&Type::Nil).clone();
                             if let Some(expect) = &var.1 {
                                 let expect = ctx.resolve_type(expect)?;
-                                type_match(&expect, &actual)?;
+                                type_match(&expect, &actual, &stmt.span)?;
                                 ctx.insert(var.0.clone(), expect.clone());
                             } else {
                                 ctx.insert(var.0.clone(), actual);
@@ -121,7 +120,7 @@ impl Context {
                             let actual = ctx.check_expression(&exprs[i])?;
                             if let Some(expect) = &var.1 {
                                 let expect = ctx.resolve_type(expect)?;
-                                type_match(&expect, &actual[0])?;
+                                type_match(&expect, &actual[0], &stmt.span)?;
                                 ctx.insert(var.0.clone(), expect.clone());
                             } else {
                                 ctx.insert(var.0.clone(), actual[0].clone());
@@ -135,7 +134,9 @@ impl Context {
                         let var_type = match var {
                             ast::LValue::Variable(name) => ctx
                                 .get(name)
-                                .ok_or_else(|| format!("Variable not found: {}", name))?
+                                .ok_or_else(|| {
+                                    format!("Variable not found: {} at {:?}", name, stmt.span.0)
+                                })?
                                 .clone(),
                             ast::LValue::Index(table, index) => {
                                 let table_type = ctx.check_expression(table)?[0].clone();
@@ -148,7 +149,12 @@ impl Context {
                                         let index_type = ctx.check_expression(index)?[0].clone();
                                         check_table(&table_type, &index_type)?
                                     }
-                                    _ => return Err(format!("Not a table: {}", table_type)),
+                                    _ => {
+                                        return Err(format!(
+                                            "Not a table: {} at {:?}",
+                                            table_type, stmt.span.0
+                                        ))
+                                    }
                                 }
                             }
                         };
@@ -158,7 +164,7 @@ impl Context {
                         let actual = ctx.check_expression(&exprs[0])?;
                         for i in 0..var_types.len() {
                             let expect = ctx.resolve_type(&var_types[i])?;
-                            type_match(&expect, actual.get(i).unwrap_or(&Type::Nil))?;
+                            type_match(&expect, actual.get(i).unwrap_or(&Type::Nil), &stmt.span)?;
                         }
                     } else {
                         for i in 0..var_types.len().max(exprs.len()) {
@@ -168,7 +174,7 @@ impl Context {
                                 Type::Nil
                             };
                             let expect = ctx.resolve_type(&var_types[i])?;
-                            type_match(&expect, &actual)?;
+                            type_match(&expect, &actual, &stmt.span)?;
                         }
                     }
                 }
@@ -193,12 +199,12 @@ impl Context {
                     body,
                 } => {
                     let start_type = ctx.check_expression(start)?[0].clone();
-                    type_match(&Type::Number, &start_type)?;
+                    type_match(&Type::Number, &start_type, &stmt.span)?;
                     let end_type = ctx.check_expression(end)?[0].clone();
-                    type_match(&Type::Number, &end_type)?;
+                    type_match(&Type::Number, &end_type, &stmt.span)?;
                     if let Some(step) = step {
                         let step_type = ctx.check_expression(step)?[0].clone();
-                        type_match(&Type::Number, &step_type)?;
+                        type_match(&Type::Number, &step_type, &stmt.span)?;
                     }
                     let mut ctx = ctx.child();
                     ctx.insert(variable.clone(), Type::Number);
@@ -225,7 +231,11 @@ impl Context {
                         match return_type {
                             ReturnType::Fixed(expect) => {
                                 for i in 0..expect.len() {
-                                    type_match(&expect[i], actual.get(i).unwrap_or(&Type::Nil))?;
+                                    type_match(
+                                        &expect[i],
+                                        actual.get(i).unwrap_or(&Type::Nil),
+                                        &stmt.span,
+                                    )?;
                                 }
                             }
                             ReturnType::Infer(typess) => {
@@ -241,7 +251,11 @@ impl Context {
                         match return_type {
                             ReturnType::Fixed(expect) => {
                                 for i in 0..expect.len() {
-                                    type_match(&expect[i], actuals.get(i).unwrap_or(&Type::Nil))?;
+                                    type_match(
+                                        &expect[i],
+                                        actuals.get(i).unwrap_or(&Type::Nil),
+                                        &stmt.span,
+                                    )?;
                                 }
                             }
                             ReturnType::Infer(typess) => {
@@ -276,8 +290,8 @@ impl Context {
         Ok(ret_types.into_types())
     }
 
-    fn check_expression(&self, expr: &ast::Expression) -> Result<Vec<Type>, String> {
-        Ok(match expr {
+    fn check_expression(&self, expr: &ast::SpannedExpression) -> Result<Vec<Type>, String> {
+        Ok(match &**expr {
             ast::Expression::Literal(literal) => {
                 let val = match literal {
                     ast::Literal::Number(n) => ConstData::try_from_f64(*n)
@@ -292,7 +306,7 @@ impl Context {
             ast::Expression::Variable(name) => {
                 let val = self
                     .get(name)
-                    .ok_or_else(|| format!("Variable not found: {}", name))?
+                    .ok_or_else(|| format!("Variable not found: {} at {:?}", name, expr.span.0))?
                     .clone();
                 vec![val]
             }
@@ -301,7 +315,7 @@ impl Context {
                 arguments,
             } => {
                 let func_type = if let ast::Expression::Literal(ast::Literal::String(f)) =
-                    function.deref()
+                    &***function
                 {
                     match f.as_str() {
                         "__eq" => Type::Function(vec![Type::Any, Type::Any], vec![Type::Bool]),
@@ -337,7 +351,7 @@ impl Context {
                         let actual = self.check_expression(&arguments[0])?;
                         for i in 0..params.len() {
                             let param = self.resolve_type(&params[i])?;
-                            type_match(&param, actual.get(i).unwrap_or(&Type::Nil))?;
+                            type_match(&param, actual.get(i).unwrap_or(&Type::Nil), &expr.span)?;
                         }
                     } else {
                         for i in 0..params.len() {
@@ -347,12 +361,15 @@ impl Context {
                             } else {
                                 Type::Nil
                             };
-                            type_match(&param, &actual)?;
+                            type_match(&param, &actual, &expr.span)?;
                         }
                     }
                     return_types
                 } else {
-                    return Err(format!("Not a function: {}", func_type));
+                    return Err(format!(
+                        "Not a function: {} at {:?}",
+                        func_type, expr.span.0
+                    ));
                 }
             }
             ast::Expression::Index { table, index } => {
@@ -368,7 +385,7 @@ impl Context {
                         let index_type = &index_types[0];
                         vec![check_table(&table_type, &index_type)?]
                     }
-                    _ => return Err(format!("Not a table: {}", table_type)),
+                    _ => return Err(format!("Not a table: {} at {:?}", table_type, expr.span.0)),
                 }
             }
             ast::Expression::Fn(function) => {
@@ -418,7 +435,12 @@ impl Context {
                                 Type::Const(const_data) => consts.push((const_data, value_type)),
                                 Type::Table(_) => table.push(value_type),
                                 Type::Function(_, _) => functions.push(value_type),
-                                t => return Err(format!("Invalid table key type: {}", t)),
+                                t => {
+                                    return Err(format!(
+                                        "Invalid table key type: {} at {:?}",
+                                        t, e.span.0
+                                    ))
+                                }
                             }
                         }
                     }
@@ -451,12 +473,15 @@ impl Context {
                 let ts = self.check_expression(e)?;
                 let type_args = self.resolve_types(type_args.iter())?;
                 if ts.len() != 1 {
-                    return Err("Type resolve expects one argument".to_string());
+                    return Err(format!(
+                        "Type resolve expects one argument at {:?}",
+                        expr.span.0
+                    ));
                 }
                 match &ts[0] {
                     Type::Generic(params, t) => {
                         if params.len() != type_args.len() {
-                            return Err("Type resolve expects same number of type arguments as generic parameters".to_string());
+                            return Err(format!("Type resolve expects same number of type arguments as generic parameters at {:?}", expr.span.0));
                         }
                         let mut ctx = self.child();
                         for (param, arg) in params.iter().zip(type_args.iter()) {
@@ -465,7 +490,10 @@ impl Context {
                         vec![ctx.resolve_type(t)?]
                     }
                     _ => {
-                        return Err("Type resolve expects a generic type".to_string());
+                        return Err(format!(
+                            "Type resolve expects a generic type at {:?}",
+                            expr.span.0
+                        ));
                     }
                 }
             }
@@ -520,13 +548,13 @@ fn check_table(table_type: &TypeTable, index_type: &Type) -> Result<Type, String
     Err(format!("Invalid index type: {}", index_type))
 }
 
-fn type_match(expect: &Type, actual: &Type) -> Result<(), String> {
+fn type_match(expect: &Type, actual: &Type, span: &ast::Span) -> Result<(), String> {
     if expect.include(actual) {
         Ok(())
     } else {
         Err(format!(
-            "Type mismatch, expected {}, got {}",
-            expect, actual
+            "Type mismatch, expected {}, got {} at {:?}",
+            expect, actual, span.0
         ))
     }
 }

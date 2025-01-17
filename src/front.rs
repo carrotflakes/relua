@@ -1,22 +1,17 @@
 use crate::ast::*;
 use crate::r#type::{ConstData, Type, TypeTable};
 
-const KEYWORDS: [&str; 12] = ["fn", "let", "if", "else", "while", "for", "in", "return", "break", "true", "false", "type"];
+const KEYWORDS: [&str; 12] = [
+    "fn", "let", "if", "else", "while", "for", "in", "return", "break", "true", "false", "type",
+];
 
 // https://docs.rs/peg/latest/peg/
 peg::parser!(pub grammar parser() for str {
-    pub rule program() -> Vec<Statement>
+    pub rule program() -> Vec<SpannedStatement>
         = statements()
 
-    rule def_function() -> Statement
-        = "fn" _ name:identifier() _ tps:type_params() _
-        "(" params:((_ i:identifier() _ ":" _ t:type_() {(i, t)}) ** ",") ")" _
-        rt:ret_types()?
-        "{" _ stmts:statements() _ "}"
-        { Statement::Fn {name, function: Function { type_params: tps, parameters: params, return_types: rt, body: stmts } } }
-
-    rule statements() -> Vec<Statement>
-        = _ ss:(statement() ** _) _ rs:("return" es:((_ e:expression() _ { e }) ** ",") { Statement::Return(es) } / "break" { Statement::Break })? {
+    rule statements() -> Vec<SpannedStatement>
+        = _ ss:(statement() ** _) _ rs:ret_stat()? {
             let mut ss = ss;
             if let Some(r) = rs {
                 ss.push(r);
@@ -24,16 +19,27 @@ peg::parser!(pub grammar parser() for str {
             ss
         }
 
-    rule statement() -> Statement
+    rule ret_stat() -> SpannedStatement
+        = pb:position!()
+        s:("return" es:((_ e:expression() _ { e }) ** ",") { Statement::Return(es) } / "break" { Statement::Break })
+        pe:position!()
+        { spanned(pb, pe, s) }
+
+    rule statement() -> SpannedStatement
+        = spanned_stmt(<
+            let_stmt()
+            / if_else()
+            / while_loop()
+            / for_numeric()
+            / for_generic()
+            / assignment()
+            / def_function()
+            / type_alias()
+            / e:expression() { Statement::Expression(e) }
+        >)
+
+    rule let_stmt() -> Statement
         = "let" vs:((_ name:identifier() _ t:(":" _ t:type_() _ { t })? { (name, t) }) ++ ",") "=" es:((_ e:expression() _ { e }) ++ ",") { Statement::Let(vs, es) }
-        / if_else()
-        / while_loop()
-        / for_numeric()
-        / for_generic()
-        / assignment()
-        / def_function()
-        / type_alias()
-        / e:expression() { Statement::Expression(e) }
 
     rule if_else() -> Statement
         = "if" _ e:expression() _ "{" _
@@ -64,60 +70,73 @@ peg::parser!(pub grammar parser() for str {
             }
         }
 
+    rule def_function() -> Statement
+        = "fn" _ name:identifier() _ tps:type_params() _
+        "(" params:((_ i:identifier() _ ":" _ t:type_() {(i, t)}) ** ",") ")" _
+        rt:ret_types()?
+        "{" _ stmts:statements() _ "}"
+        { Statement::Fn {name, function: Function { type_params: tps, parameters: params, return_types: rt, body: stmts } } }
+
     rule type_alias() -> Statement
         = "type" _ name:identifier() _ "=" _ t:type_() { Statement::TypeAlias(name, t) }
 
+    rule spanned_stmt(f: rule<Statement>) -> SpannedStatement
+        = pb:position!() s:f() pe:position!() { spanned(pb, pe, s) }
+
+    rule spanned_expr(f: rule<Expression>) -> SpannedExpression
+        = pb:position!() e:f() pe:position!() { spanned(pb, pe, e) }
+
     rule lval() -> LValue
         = t:expression() {?
-            match t {
+            match t.node {
                 Expression::Index { table, index } => Ok(LValue::Index(table, index)),
                 Expression::Variable(i) => Ok(LValue::Variable(i)),
                 _ => Err("expected index or variable expression"),
             }
         }
 
-    rule expression() -> Expression
+    rule expression() -> SpannedExpression
         = binary_op()
 
-    rule binary_op() -> Expression = precedence!{
-        a:(@) _ "||" _ b:@ { Expression::LogicalOr(Box::new(a), Box::new(b)) }
+    rule binary_op() -> SpannedExpression = precedence!{
+        a:(@) _ "||" _ b:@ { spanned(a.span.0.start, b.span.0.end, Expression::LogicalOr(Box::new(a), Box::new(b))) }
         --
-        a:(@) _ "&&" _ b:@ { Expression::LogicalAnd(Box::new(a), Box::new(b)) }
+        a:(@) _ "&&" _ b:@ { spanned(a.span.0.start, b.span.0.end, Expression::LogicalAnd(Box::new(a), Box::new(b))) }
         --
-        a:(@) _ "==" _ b:@ { function_expr("__eq", vec![a, b]) }
-        a:(@) _ "!=" _ b:@ { Expression::LogicalNot(Box::new(function_expr("__eq", vec![a, b]))) }
-        a:(@) _ !type_args() "<"  _ b:@ { function_expr("__lt", vec![a, b]) }
-        a:(@) _ "<=" _ b:@ { function_expr("__le", vec![a, b]) }
-        a:(@) _ ">"  _ b:@ { Expression::LogicalNot(Box::new(function_expr("__le", vec![a, b]))) }
-        a:(@) _ ">=" _ b:@ { Expression::LogicalNot(Box::new(function_expr("__lt", vec![a, b]))) }
+        a:(@) _ "==" _ b:@ { bin_op_expr("__eq", a, b) }
+        a:(@) _ "!=" _ b:@ { spanned(a.span.0.start, b.span.0.end, Expression::LogicalNot(Box::new(bin_op_expr("__eq", a, b)))) }
+        a:(@) _ !type_args() "<"  _ b:@ { bin_op_expr("__lt", a, b) }
+        a:(@) _ "<=" _ b:@ { bin_op_expr("__le", a, b) }
+        a:(@) _ ">"  _ b:@ { spanned(a.span.0.start, b.span.0.end, Expression::LogicalNot(Box::new(bin_op_expr("__le", a, b)))) }
+        a:(@) _ ">=" _ b:@ { spanned(a.span.0.start, b.span.0.end, Expression::LogicalNot(Box::new(bin_op_expr("__lt", a, b)))) }
         --
-        a:(@) _ "+" _ b:@ { function_expr("__add", vec![a, b]) }
-        a:(@) _ "-" _ b:@ { function_expr("__sub", vec![a, b]) }
+        a:(@) _ "+" _ b:@ { bin_op_expr("__add", a, b) }
+        a:(@) _ "-" _ b:@ { bin_op_expr("__sub", a, b) }
         --
-        a:(@) _ "*" _ b:@ { function_expr("__mul", vec![a, b]) }
-        a:(@) _ "/" _ b:@ { function_expr("__div", vec![a, b]) }
-        a:(@) _ idiv_op() _ b:@ { function_expr("__idiv", vec![a, b]) }
-        a:(@) _ "%" _ b:@ { function_expr("__mod", vec![a, b]) }
+        a:(@) _ "*" _ b:@ { bin_op_expr("__mul", a, b) }
+        a:(@) _ "/" _ b:@ { bin_op_expr("__div", a, b) }
+        a:(@) _ idiv_op() _ b:@ { bin_op_expr("__idiv", a, b) }
+        a:(@) _ "%" _ b:@ { bin_op_expr("__mod", a, b) }
         --
-        "-" _ e:@ { function_expr("__neg", vec![e]) }
-        "!" _ e:@ { Expression::LogicalNot(Box::new(e)) }
+        pb:position!() "-" _ e:@ { spanned(pb, e.span.0.end, function_expr("__neg", vec![e])) }
+        pb:position!() "!" _ e:@ { spanned(pb, e.span.0.end, Expression::LogicalNot(Box::new(e))) }
         --
-        a:@ _ "^" _ b:(@) { function_expr("__pow", vec![a, b]) }
+        a:@ _ "^" _ b:(@) { bin_op_expr("__pow", a, b) }
         --
-        "len!" _ a:@ { function_expr("__len", vec![a]) }
-        a:@ _ "[" _ b:expression() _ "]" { Expression::Index { table: Box::new(a), index: Box::new(b) } }
-        a:@ _ "(" _ args:((_ e:expression() _ {e}) ** ",") ")" { Expression::Call { function: Box::new(a), arguments: args } }
-        a:@ _ ts:type_args() { Expression::TypeResolve(Box::new(a), ts) }
-        a:@ _ "." _ b:identifier() { Expression::Index { table: Box::new(a), index: Box::new(Expression::Literal(Literal::String(b))) } }
-        u:unary_op() { u }
+        pb:position!() "len!" _ a:@ { spanned(pb, a.span.0.end, function_expr("__len", vec![a])) }
+        a:@ _ "[" _ b:expression() _ "]" pe:position!() { spanned(a.span.0.start, pe, Expression::Index { table: Box::new(a), index: Box::new(b) }) }
+        a:@ _ "(" _ args:((_ e:expression() _ {e}) ** ",") ")" pe:position!() { spanned(a.span.0.start, pe, Expression::Call { function: Box::new(a), arguments: args }) }
+        a:@ _ ts:type_args() pe:position!() { spanned(a.span.0.start, pe, Expression::TypeResolve(Box::new(a), ts)) }
+        a:@ _ "." _ pi:position!() b:identifier() pe:position!() { spanned(a.span.0.start, pe, Expression::Index { table: Box::new(a), index: Box::new(spanned(pi, pe, Expression::Literal(Literal::String(b)))) }) }
+        "(" _ e:binary_op() _ ")" { e }
+        u:spanned_expr(<unary_op()>) { u }
     }
 
     rule idiv_op() -> ()
         = "//" {? if cfg!(feature = "idiv") {Ok(())} else {Err("// operator is not supported.")} }
 
     rule unary_op() -> Expression
-        = "(" _ e:expression() _ ")" { e }
-        / "{" _ ts:((_ t:table_entry() _ { t }) ** ",") ","? _ "}" {
+        = "{" _ ts:((_ t:table_entry() _ { t }) ** ",") ","? _ "}" {
             let mut tes = vec![];
             let mut i = 1;
             for (k, v) in ts {
@@ -135,7 +154,7 @@ peg::parser!(pub grammar parser() for str {
         / l:literal() { Expression::Literal(l) }
         / "()" { Expression::Nil }
 
-    rule table_entry() -> (Option<TableKey>, Expression)
+    rule table_entry() -> (Option<TableKey>, SpannedExpression)
         = k:literal() _ ":" _ v:expression() { (Some(TableKey::Literal(k)), v) }
         / k:(k:key() _ ":" { TableKey::Literal(Literal::String(k)) })? _ v:expression() { (k, v) }
         / "[" _ k:expression() _ "]" _ ":" _ v:expression() { (Some(TableKey::Expression(k)), v) }
@@ -223,10 +242,32 @@ peg::parser!(pub grammar parser() for str {
     rule _() = quiet!{([' ' | '\t' | '\n'] / "#" [^'\n']*)*}
 });
 
-fn function_expr(name: &str, args: Vec<Expression>) -> Expression {
+fn function_expr(name: &str, args: Vec<SpannedExpression>) -> Expression {
     Expression::Call {
-        function: Box::new(Expression::Literal(Literal::String(name.to_owned()))),
+        function: Box::new(Spanned::none(Expression::Literal(Literal::String(
+            name.to_owned(),
+        )))),
         arguments: args,
+    }
+}
+
+fn bin_op_expr(name: &str, a: SpannedExpression, b: SpannedExpression) -> SpannedExpression {
+    spanned(
+        a.span.0.start,
+        b.span.0.end,
+        Expression::Call {
+            function: Box::new(Spanned::none(Expression::Literal(Literal::String(
+                name.to_owned(),
+            )))),
+            arguments: vec![a, b],
+        },
+    )
+}
+
+fn spanned<T>(start: usize, end: usize, value: T) -> Spanned<T> {
+    Spanned {
+        node: value,
+        span: Span(start..end),
     }
 }
 
@@ -304,9 +345,9 @@ fn f<T>(a: T) -> T {
 }
 let a: num = f<num>(1)
 "#,
-r#"len!x + 1"#,
-r#"while true {break}break"#,
-r#"let input = 0"#
+        r#"len!x + 1"#,
+        r#"while true {break}break"#,
+        r#"let input = 0"#,
     ];
     for program in programs.iter() {
         let defs = parser::program(program).unwrap();
