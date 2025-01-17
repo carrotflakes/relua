@@ -3,6 +3,10 @@ use std::collections::HashMap;
 use crate::ast;
 use crate::r#type::{ConstData, Type, TypeTable};
 
+thread_local! {
+    static SOURCE: std::cell::RefCell<*const str> = std::cell::RefCell::new("");
+}
+
 pub struct Context {
     symbol_table: HashMap<String, Type>,
     type_table: HashMap<String, Type>,
@@ -48,10 +52,22 @@ impl Context {
         Ok(types)
     }
 
-    pub fn check_program(&self, stmts: &[ast::SpannedStatement]) -> Result<Vec<Type>, String> {
+    pub fn check_program(
+        &self,
+        stmts: &[ast::SpannedStatement],
+        source: &str,
+    ) -> Result<Vec<Type>, String> {
+        SOURCE.with(|s| {
+            *s.borrow_mut() = source;
+        });
+
         let mut return_types = ReturnType::Infer(vec![]);
 
         self.check_statements(stmts, &mut return_types)?;
+
+        SOURCE.with(|s| {
+            *s.borrow_mut() = "";
+        });
 
         Ok(return_types.into_types())
     }
@@ -134,9 +150,8 @@ impl Context {
                         let var_type = match var {
                             ast::LValue::Variable(name) => ctx
                                 .get(name)
-                                .ok_or_else(|| {
-                                    format!("Variable not found: {} at {:?}", name, stmt.span.0)
-                                })?
+                                .ok_or_else(|| format!("Variable not found: {}", name))
+                                .map_err(append_loc(&stmt.span))?
                                 .clone(),
                             ast::LValue::Index(table, index) => {
                                 let table_type = ctx.check_expression(table)?[0].clone();
@@ -150,10 +165,8 @@ impl Context {
                                         check_table(&table_type, &index_type)?
                                     }
                                     _ => {
-                                        return Err(format!(
-                                            "Not a table: {} at {:?}",
-                                            table_type, stmt.span.0
-                                        ))
+                                        return Err(format!("Not a table: {}", table_type))
+                                            .map_err(append_loc(&stmt.span));
                                     }
                                 }
                             }
@@ -306,7 +319,8 @@ impl Context {
             ast::Expression::Variable(name) => {
                 let val = self
                     .get(name)
-                    .ok_or_else(|| format!("Variable not found: {} at {:?}", name, expr.span.0))?
+                    .ok_or_else(|| format!("Variable not found: {}", name))
+                    .map_err(append_loc(&expr.span))?
                     .clone();
                 vec![val]
             }
@@ -366,10 +380,8 @@ impl Context {
                     }
                     return_types
                 } else {
-                    return Err(format!(
-                        "Not a function: {} at {:?}",
-                        func_type, expr.span.0
-                    ));
+                    return Err(format!("Not a function: {}", func_type))
+                        .map_err(append_loc(&expr.span));
                 }
             }
             ast::Expression::Index { table, index } => {
@@ -385,7 +397,10 @@ impl Context {
                         let index_type = &index_types[0];
                         vec![check_table(&table_type, &index_type)?]
                     }
-                    _ => return Err(format!("Not a table: {} at {:?}", table_type, expr.span.0)),
+                    _ => {
+                        return Err(format!("Not a table: {}", table_type))
+                            .map_err(append_loc(&expr.span))
+                    }
                 }
             }
             ast::Expression::Fn(function) => {
@@ -436,10 +451,8 @@ impl Context {
                                 Type::Table(_) => table.push(value_type),
                                 Type::Function(_, _) => functions.push(value_type),
                                 t => {
-                                    return Err(format!(
-                                        "Invalid table key type: {} at {:?}",
-                                        t, e.span.0
-                                    ))
+                                    return Err(format!("Invalid table key type: {}", t))
+                                        .map_err(append_loc(&expr.span));
                                 }
                             }
                         }
@@ -473,15 +486,13 @@ impl Context {
                 let ts = self.check_expression(e)?;
                 let type_args = self.resolve_types(type_args.iter())?;
                 if ts.len() != 1 {
-                    return Err(format!(
-                        "Type resolve expects one argument at {:?}",
-                        expr.span.0
-                    ));
+                    return Err(format!("Type resolve expects one argument",))
+                        .map_err(append_loc(&expr.span));
                 }
                 match &ts[0] {
                     Type::Generic(params, t) => {
                         if params.len() != type_args.len() {
-                            return Err(format!("Type resolve expects same number of type arguments as generic parameters at {:?}", expr.span.0));
+                            return Err(format!("Type resolve expects same number of type arguments as generic parameters")).map_err(append_loc(&expr.span));
                         }
                         let mut ctx = self.child();
                         for (param, arg) in params.iter().zip(type_args.iter()) {
@@ -490,10 +501,8 @@ impl Context {
                         vec![ctx.resolve_type(t)?]
                     }
                     _ => {
-                        return Err(format!(
-                            "Type resolve expects a generic type at {:?}",
-                            expr.span.0
-                        ));
+                        return Err(format!("Type resolve expects a generic type",))
+                            .map_err(append_loc(&expr.span));
                     }
                 }
             }
@@ -552,10 +561,10 @@ fn type_match(expect: &Type, actual: &Type, span: &ast::Span) -> Result<(), Stri
     if expect.include(actual) {
         Ok(())
     } else {
-        Err(format!(
-            "Type mismatch, expected {}, got {} at {:?}",
-            expect, actual, span.0
-        ))
+        Err(append_loc(span)(format!(
+            "Type mismatch, expected {}, got {}",
+            expect, actual
+        )))
     }
 }
 
@@ -576,4 +585,30 @@ impl ReturnType {
             }
         }
     }
+}
+
+fn append_loc(span: &ast::Span) -> impl Fn(String) -> String {
+    let pos = span.0.start;
+    move |msg| {
+        let src = SOURCE.with(|s| unsafe { &**s.borrow() });
+        let loc = row_and_col(src, pos);
+        format!("{} at {:?}", msg, loc)
+    }
+}
+
+fn row_and_col(src: &str, pos: usize) -> (usize, usize) {
+    let mut row = 1;
+    let mut col = 1;
+    for (i, c) in src.char_indices() {
+        if i == pos {
+            break;
+        }
+        if c == '\n' {
+            row += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+    }
+    (row, col)
 }
