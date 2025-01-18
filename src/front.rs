@@ -20,10 +20,9 @@ peg::parser!(pub grammar parser() for str {
         }
 
     rule ret_stat() -> SpannedStatement
-        = pb:position!()
-        s:("return" es:((_ e:expression() _ { e }) ** ",") { Statement::Return(es) } / "break" { Statement::Break })
-        pe:position!()
-        { spanned(pb, pe, s) }
+        = spanned_stmt(<
+            "return" es:((_ e:expression() _ { e }) ** ",") { Statement::Return(es) } / "break" { Statement::Break }
+        >)
 
     rule statement() -> SpannedStatement
         = spanned_stmt(<
@@ -80,12 +79,6 @@ peg::parser!(pub grammar parser() for str {
     rule type_alias() -> Statement
         = "type" _ name:identifier() _ "=" _ t:type_() { Statement::TypeAlias(name, t) }
 
-    rule spanned_stmt(f: rule<Statement>) -> SpannedStatement
-        = pb:position!() s:f() pe:position!() { spanned(pb, pe, s) }
-
-    rule spanned_expr(f: rule<Expression>) -> SpannedExpression
-        = pb:position!() e:f() pe:position!() { spanned(pb, pe, e) }
-
     rule lval() -> LValue
         = t:expression() {?
             match t.node {
@@ -95,10 +88,7 @@ peg::parser!(pub grammar parser() for str {
             }
         }
 
-    rule expression() -> SpannedExpression
-        = binary_op()
-
-    rule binary_op() -> SpannedExpression = precedence!{
+    rule expression() -> SpannedExpression = precedence!{
         a:(@) _ "||" _ b:@ { spanned(a.span.0.start, b.span.0.end, Expression::LogicalOr(Box::new(a), Box::new(b))) }
         --
         a:(@) _ "&&" _ b:@ { spanned(a.span.0.start, b.span.0.end, Expression::LogicalAnd(Box::new(a), Box::new(b))) }
@@ -128,7 +118,7 @@ peg::parser!(pub grammar parser() for str {
         a:@ _ "(" _ args:((_ e:expression() _ {e}) ** ",") ")" pe:position!() { spanned(a.span.0.start, pe, Expression::Call { function: Box::new(a), arguments: args }) }
         a:@ _ ts:type_args() pe:position!() { spanned(a.span.0.start, pe, Expression::TypeResolve(Box::new(a), ts)) }
         a:@ _ "." _ pi:position!() b:identifier() pe:position!() { spanned(a.span.0.start, pe, Expression::Index { table: Box::new(a), index: Box::new(spanned(pi, pe, Expression::Literal(Literal::String(b)))) }) }
-        "(" _ e:binary_op() _ ")" { e }
+        "(" _ e:expression() _ ")" { e }
         u:spanned_expr(<unary_op()>) { u }
     }
 
@@ -207,6 +197,12 @@ peg::parser!(pub grammar parser() for str {
         a:type_atom() { a }
         i:identifier() { Type::Variable(i) }
     }
+
+    rule spanned_stmt(f: rule<Statement>) -> SpannedStatement
+        = pb:position!() s:f() pe:position!() { spanned(pb, pe, s) }
+
+    rule spanned_expr(f: rule<Expression>) -> SpannedExpression
+        = pb:position!() e:f() pe:position!() { spanned(pb, pe, e) }
 
     rule type_table_entry() -> (Option<Literal>, Type)
         = k:literal() _ ":" _ v:type_() { (Some(k), v) }
