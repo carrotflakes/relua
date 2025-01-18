@@ -233,7 +233,8 @@ peg::parser!(pub grammar parser() for str {
         = "<" _ ts:((_ t:type_() _ { t }) ++ ",") ">" _ { ts }
 
     rule string() -> String
-        = "\"" s:$([^'"']*) "\"" { s.to_owned() }
+        = "\"" s:$(("\\" ['"' | '\'' | 'n' | 'r' | 't'] / [^'"'])*) "\"" { unescape(s) }
+        / "'" s:$(("\\" ['"' | '\'' | 'n' | 'r' | 't'] / [^'\''])*) "'" { unescape(s) }
 
     rule _() = quiet!{([' ' | '\t' | '\n'] / "#" [^'\n']*)*}
 });
@@ -267,9 +268,34 @@ fn spanned<T>(start: usize, end: usize, value: T) -> Spanned<T> {
     }
 }
 
+fn unescape(s: &str) -> String {
+    let mut r = String::new();
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next().unwrap() {
+                '"' => r.push('"'),
+                '\'' => r.push('\''),
+                'n' => r.push('\n'),
+                'r' => r.push('\r'),
+                't' => r.push('\t'),
+                c => r.push(c),
+            }
+        } else {
+            r.push(c);
+        }
+    }
+    r
+}
+
 #[test]
 fn test_parser() {
-    let programs = [
+    fn test_program(program: &str) {
+        let defs = parser::program(program).unwrap();
+        gilder::assert_golden!(format!("{:?}", defs));
+    }
+
+    test_program(
         r#"
 let a: num = 1
 let b: num = 1.23
@@ -277,12 +303,18 @@ fn main(a: num) {
 }
 main(2)
 "#,
+    );
+
+    test_program(
         r#"
 fn main(a: num) -> num {
     let b: num = 1
     return a * 2 + b
 }
 "#,
+    );
+
+    test_program(
         r#"
 fn main(a: num) -> num {
     fn(a: num) -> num {
@@ -290,6 +322,9 @@ fn main(a: num) -> num {
     }
 }
 "#,
+    );
+
+    test_program(
         r#"
 fn main() -> {bool, bool, [str]: num} {
     return {
@@ -299,9 +334,15 @@ fn main() -> {bool, bool, [str]: num} {
         false,
     }
 }"#,
+    );
+
+    test_program(
         r#"
 let a = {}[1][2]
 "#,
+    );
+
+    test_program(
         r#"
 fn main() {
     if true {
@@ -317,6 +358,9 @@ fn main() {
     }
 }
 "#,
+    );
+
+    test_program(
         r#"
 let a: {f: (num) -> num} = {
     f: fn(a: num) -> num {
@@ -324,31 +368,41 @@ let a: {f: (num) -> num} = {
     }
 }
 "#,
+    );
+
+    test_program(
         r#"
 fn f() {
     {1: 2, 3: 4}[1].a = 1
 }
 "#,
+    );
+
+    test_program(
         r#"
 # comment
 fn f() { # a
   # b
 }
 "#,
+    );
+
+    test_program(
         r#"
 fn f<T>(a: T) -> T {
     return a
 }
 let a: num = f<num>(1)
 "#,
-        r#"len!x + 1"#,
-        r#"while true {break}break"#,
-        r#"let input = 0"#,
-    ];
-    for program in programs.iter() {
-        let defs = parser::program(program).unwrap();
-        gilder::assert_golden!(format!("{:?}", defs));
-    }
+    );
+
+    test_program(r#"len!x + 1"#);
+
+    test_program(r#"while true {break}break"#);
+
+    test_program(r#"let input = 0"#);
+
+    test_program(r#"let a = "abc\"\'\n\r\t" + 'abc\"\'\n\r\t' "#);
 }
 
 #[test]
