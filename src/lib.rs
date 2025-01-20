@@ -32,9 +32,25 @@ pub fn compile_with_bindings(
 }
 
 pub fn default_bindings() -> HashMap<String, r#type::Type> {
-    use r#type::{Type, TypeTable};
+    use r#type::{ConstData, Type, TypeTable};
 
     let bindings: HashMap<String, Type> = vec![
+        (
+            "type",
+            Type::Function(
+                vec![Type::Unknown],
+                vec![Type::Union(vec![
+                    Type::Const(ConstData::String("nil".to_owned())),
+                    Type::Const(ConstData::String("boolean".to_owned())),
+                    Type::Const(ConstData::String("number".to_owned())),
+                    Type::Const(ConstData::String("string".to_owned())),
+                    Type::Const(ConstData::String("userdata".to_owned())),
+                    Type::Const(ConstData::String("function".to_owned())),
+                    Type::Const(ConstData::String("thread".to_owned())),
+                    Type::Const(ConstData::String("table".to_owned())),
+                ])],
+            ),
+        ),
         ("print", Type::Function(vec![Type::Unknown], vec![])),
         (
             "pairs",

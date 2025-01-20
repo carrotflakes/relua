@@ -1,8 +1,8 @@
 use crate::ast::*;
 use crate::r#type::{ConstData, Type, TypeTable};
 
-const KEYWORDS: [&str; 12] = [
-    "fn", "let", "if", "else", "while", "for", "in", "return", "break", "true", "false", "type",
+const FORBIDDEN_IDENTIFIERS: [&str; 11] = [
+    "fn", "let", "if", "else", "while", "for", "in", "return", "break", "true", "false",
 ];
 
 // https://docs.rs/peg/latest/peg/
@@ -157,7 +157,7 @@ peg::parser!(pub grammar parser() for str {
         { Function { type_params: tps, parameters: params, return_types: rt, body: stmts } }
 
     rule identifier() -> String
-        = quiet!{ n:$(['a'..='z' | 'A'..='Z' | '_']['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*) {? if !KEYWORDS.contains(&n) { Ok(n.to_owned()) } else { Err("Keyword is not a identifier") } } }
+        = quiet!{ n:$(['a'..='z' | 'A'..='Z' | '_']['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*) {? if !FORBIDDEN_IDENTIFIERS.contains(&n) { Ok(n.to_owned()) } else { Err("Keyword is not a identifier") } } }
         / expected!("identifier")
 
     rule key() -> String
