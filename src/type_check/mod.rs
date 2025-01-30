@@ -1,3 +1,5 @@
+mod type_filter;
+
 use std::collections::HashMap;
 
 use crate::ast;
@@ -9,6 +11,7 @@ thread_local! {
 
 pub struct Context {
     symbol_table: HashMap<String, Type>,
+    symbol_type_guarded: HashMap<String, Type>,
     type_table: HashMap<String, Type>,
 }
 
@@ -21,6 +24,7 @@ impl Context {
     pub fn from_symbol_table(symbol_table: HashMap<String, Type>) -> Self {
         Self {
             symbol_table,
+            symbol_type_guarded: HashMap::new(),
             type_table: HashMap::new(),
         }
     }
@@ -28,6 +32,7 @@ impl Context {
     fn child(&self) -> Self {
         Self {
             symbol_table: self.symbol_table.clone(),
+            symbol_type_guarded: self.symbol_type_guarded.clone(),
             type_table: self.type_table.clone(),
         }
     }
@@ -36,8 +41,14 @@ impl Context {
         self.symbol_table.insert(name, type_);
     }
 
-    fn get(&self, name: &str) -> Option<&Type> {
+    fn get_symbol_variable_type(&self, name: &str) -> Option<&Type> {
         self.symbol_table.get(name)
+    }
+
+    fn get_symbol_type(&self, name: &str) -> Option<&Type> {
+        self.symbol_type_guarded
+            .get(name)
+            .or_else(|| self.symbol_table.get(name))
     }
 
     fn resolve_type(&self, type_: &Type) -> Result<Type, String> {
@@ -149,7 +160,7 @@ impl Context {
                     for var in vars {
                         let var_type = match var {
                             ast::LValue::Variable(name) => ctx
-                                .get(name)
+                                .get_symbol_variable_type(name)
                                 .ok_or_else(|| format!("Variable not found: {}", name))
                                 .map_err(append_loc(&stmt.span))?
                                 .clone(),
@@ -162,7 +173,8 @@ impl Context {
                                     }
                                     Type::Table(table_type) => {
                                         let index_type = ctx.check_expression(index)?[0].clone();
-                                        check_table(&table_type, &index_type)?
+                                        check_table(&table_type, &index_type)
+                                            .map_err(append_loc(&stmt.span))?
                                     }
                                     _ => {
                                         return Err(format!("Not a table: {}", table_type))
@@ -197,8 +209,9 @@ impl Context {
                     else_,
                 } => {
                     ctx.check_expression(condition)?;
-                    ctx.check_statements(then, return_type)?;
-                    ctx.check_statements(else_, return_type)?;
+                    let (ctx1, ctx2) = ctx.conditioned(condition);
+                    ctx1.check_statements(then, return_type)?;
+                    ctx2.check_statements(else_, return_type)?;
                 }
                 ast::Statement::While { condition, body } => {
                     ctx.check_expression(condition)?;
@@ -318,7 +331,7 @@ impl Context {
             ast::Expression::Nil => vec![Type::Nil],
             ast::Expression::Variable(name) => {
                 let val = self
-                    .get(name)
+                    .get_symbol_type(name)
                     .ok_or_else(|| format!("Variable not found: {}", name))
                     .map_err(append_loc(&expr.span))?
                     .clone();
@@ -395,7 +408,28 @@ impl Context {
                     Type::Table(table_type) => {
                         let index_types = self.check_expression(index)?;
                         let index_type = &index_types[0];
-                        vec![check_table(&table_type, &index_type)?]
+                        vec![check_table(&table_type, &index_type)
+                            .map_err(append_loc(&expr.span))?]
+                    }
+                    Type::Union(ts) => {
+                        let ts = ts
+                            .iter()
+                            .map(|t| match t {
+                                Type::Any => {
+                                    self.check_expression(index)?;
+                                    Ok(Type::Any)
+                                }
+                                Type::Table(table_type) => {
+                                    let index_types = self.check_expression(index)?;
+                                    let index_type = &index_types[0];
+                                    Ok(check_table(&table_type, &index_type)
+                                        .map_err(append_loc(&expr.span))?)
+                                }
+                                _ => Err(format!("Not a table: {}", table_type))
+                                    .map_err(append_loc(&expr.span)),
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        vec![Type::Union(ts).normalize()]
                     }
                     _ => {
                         return Err(format!("Not a table: {}", table_type))
@@ -507,6 +541,52 @@ impl Context {
                 }
             }
         })
+    }
+
+    fn conditioned(&self, condition: &ast::SpannedExpression) -> (Self, Self) {
+        let type_filter = type_filter::expression_to_type_filter(condition);
+        if let Some(type_filter) = type_filter {
+            let type_filter = type_filter::type_filter_to_dnf(&type_filter);
+            let ctx1 = Context {
+                symbol_table: self.symbol_table.clone(),
+                symbol_type_guarded: self
+                    .symbol_table
+                    .iter()
+                    .filter_map(|(name, _)| {
+                        let r#type = self.get_symbol_type(name).unwrap();
+                        let type_ =
+                            type_filter::type_filter_apply(&type_filter, name, r#type, false);
+                        if r#type == &type_ {
+                            None
+                        } else {
+                            Some((name.clone(), type_))
+                        }
+                    })
+                    .collect(),
+                type_table: self.type_table.clone(),
+            };
+            let ctx2 = Context {
+                symbol_table: self.symbol_table.clone(),
+                symbol_type_guarded: self
+                    .symbol_table
+                    .iter()
+                    .filter_map(|(name, _)| {
+                        let r#type = self.get_symbol_type(name).unwrap();
+                        let type_ =
+                            type_filter::type_filter_apply(&type_filter, name, r#type, true);
+                        if r#type == &type_ {
+                            None
+                        } else {
+                            Some((name.clone(), type_))
+                        }
+                    })
+                    .collect(),
+                type_table: self.type_table.clone(),
+            };
+            (ctx1, ctx2)
+        } else {
+            (self.child(), self.child())
+        }
     }
 }
 

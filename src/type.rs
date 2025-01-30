@@ -39,6 +39,18 @@ pub enum ConstData {
 pub struct F64(f64);
 
 impl Type {
+    pub fn never() -> Self {
+        Type::Union(vec![])
+    }
+
+    pub fn is_never(&self) -> bool {
+        if let Type::Union(vec) = self {
+            vec.is_empty()
+        } else {
+            false
+        }
+    }
+
     pub fn include(&self, other: &Type) -> bool {
         match (self, other) {
             (l @ Type::Union(_), Type::Union(r)) => r.iter().all(|r| l.include(r)),
@@ -73,6 +85,57 @@ impl Type {
             }
             (Type::Function(_, _), _) => false,
             (Type::Variable(l), Type::Variable(r)) => l == r, // Is this correct?
+            (Type::Variable(_), _) => panic!("Variable type should be resolved: {}", self),
+            (Type::Generic(_, _), _) => panic!("Generic type should be resolved: {}", self),
+        }
+    }
+
+    pub fn intersect(&self, other: &Type) -> Type {
+        match (self, other) {
+            (Type::Union(l), Type::Union(r)) => {
+                let mut types = vec![];
+                for l in l {
+                    for r in r {
+                        types.push(l.intersect(r));
+                    }
+                }
+                Type::Union(types).normalize()
+            }
+            (Type::Union(l), r) => {
+                let mut types = vec![];
+                for l in l {
+                    types.push(l.intersect(r));
+                }
+                Type::Union(types).normalize()
+            }
+            (l, Type::Union(r)) => {
+                let mut types = vec![];
+                for r in r {
+                    types.push(l.intersect(r));
+                }
+                Type::Union(types).normalize()
+            }
+
+            (Type::Any, _) => other.clone(),
+            (_, Type::Any) => self.clone(),
+            (Type::Unknown, _) => other.clone(),
+            (_, Type::Unknown) => self.clone(),
+
+            (Type::Const(l), Type::Const(r)) if l == r => self.clone(),
+            (Type::Const(_), _) => Type::never(),
+            (Type::Number, Type::Number) => Type::Number,
+            (Type::Number, _) => Type::never(),
+            (Type::String, Type::String) => Type::String,
+            (Type::String, _) => Type::never(),
+            (Type::Bool, Type::Bool) => Type::Bool,
+            (Type::Bool, _) => Type::never(),
+            (Type::Nil, Type::Nil) => Type::Nil,
+            (Type::Nil, _) => Type::never(),
+            (Type::Table(l), Type::Table(r)) => Type::Table(l.intersect(r)),
+            (Type::Table(_), _) => Type::never(),
+            (Type::Function(l_ps, l_ret), Type::Function(r_ps, r_ret)) => todo!(),
+            (Type::Function(_, _), _) => Type::never(),
+            (Type::Variable(l), Type::Variable(r)) if l == r => self.clone(),
             (Type::Variable(_), _) => panic!("Variable type should be resolved: {}", self),
             (Type::Generic(_, _), _) => panic!("Generic type should be resolved: {}", self),
         }
@@ -123,6 +186,7 @@ impl Type {
         }
     }
 
+    /// Resolve all variables in the type
     pub fn resolve(&self, map: &std::collections::HashMap<String, Type>) -> Result<Type, String> {
         match self {
             Type::Variable(name) => map
@@ -135,7 +199,7 @@ impl Type {
                     .map(|t| t.resolve(map))
                     .collect::<Result<Vec<_>, _>>()?;
                 types.sort();
-                Ok(Type::from_types(types).unwrap())
+                Ok(Type::Union(types).normalize())
             }
             Type::Table(TypeTable {
                 consts,
@@ -191,6 +255,58 @@ impl Type {
             t => Ok(t.clone()),
         }
     }
+
+    pub fn indexing(&self, path: &[ConstData]) -> Type {
+        if path.is_empty() {
+            return self.clone();
+        }
+
+        match self {
+            Type::Any => Type::Any,
+            Type::Unknown => Type::Unknown,
+            Type::Union(vec) => {
+                let mut types = vec![];
+                for t in vec {
+                    types.push(t.indexing(path));
+                }
+                Type::Union(types).normalize()
+            }
+            Type::Number => Type::never(),
+            Type::String => Type::never(),
+            Type::Bool => Type::never(),
+            Type::Nil => Type::never(),
+            Type::Table(type_table) => {
+                for (cd, t) in &type_table.consts {
+                    if cd == &path[0] {
+                        return t.indexing(&path[1..]);
+                    }
+                }
+
+                // Can I return nil? or should I return unknown?
+                return match path[0] {
+                    ConstData::Number(_) => type_table
+                        .number
+                        .as_ref()
+                        .map(|t| t.indexing(&path[1..]))
+                        .unwrap_or(Type::Nil),
+                    ConstData::String(_) => type_table
+                        .string
+                        .as_ref()
+                        .map(|t| t.indexing(&path[1..]))
+                        .unwrap_or(Type::Nil),
+                    ConstData::Bool(_) => type_table
+                        .bool
+                        .as_ref()
+                        .map(|t| t.indexing(&path[1..]))
+                        .unwrap_or(Type::Nil),
+                };
+            }
+            Type::Function(_, _) => Type::never(),
+            Type::Const(_) => Type::never(),
+            Type::Variable(_) => todo!(),
+            Type::Generic(vec, _) => todo!(),
+        }
+    }
 }
 
 impl std::fmt::Display for Type {
@@ -221,6 +337,9 @@ impl std::fmt::Display for Type {
             Type::Unknown => write!(f, "unknown"),
             Type::Any => write!(f, "any"),
             Type::Union(ts) => {
+                if ts.is_empty() {
+                    return write!(f, "never");
+                }
                 write!(f, "(")?;
                 for (i, t) in ts.iter().enumerate() {
                     if i > 0 {
@@ -320,6 +439,72 @@ impl TypeTable {
         }
 
         true
+    }
+
+    pub fn intersect(&self, other: &Self) -> Self {
+        TypeTable {
+            consts: self
+                .consts
+                .iter()
+                .filter_map(|(cd, t)| {
+                    other
+                        .consts
+                        .iter()
+                        .find(|(other_cd, _)| other_cd == cd)
+                        .map(|(_, t)| t.clone())
+                        .or_else(|| match cd {
+                            ConstData::Number(_) => other.number.clone().map(|t| (*t).to_owned()),
+                            ConstData::String(_) => other.string.clone().map(|t| (*t).to_owned()),
+                            ConstData::Bool(_) => other.bool.clone().map(|t| (*t).to_owned()),
+                        })
+                        .map(|other_t| (cd.clone(), t.intersect(&other_t)))
+                })
+                .chain(
+                    other
+                        .consts
+                        .iter()
+                        .filter_map(|(cd, t)| {
+                            if self
+                                .consts
+                                .iter()
+                                .any(|(self_cd, _)| self_cd == cd)
+                            {
+                                return None;
+                            }
+                            self.consts
+                                .iter()
+                                .find(|(self_cd, _)| self_cd == cd)
+                                .map(|(_, t)| t.clone())
+                                .or_else(|| match cd {
+                                    ConstData::Number(_) => self.number.clone().map(|t| (*t).to_owned()),
+                                    ConstData::String(_) => self.string.clone().map(|t| (*t).to_owned()),
+                                    ConstData::Bool(_) => self.bool.clone().map(|t| (*t).to_owned()),
+                                })
+                                .map(|self_t| (cd.clone(), t.intersect(&self_t)))
+                        }),
+                )
+                .collect(),
+            number: match (&self.number, &other.number) {
+                (Some(l), Some(r)) => Some(Box::new(l.intersect(r))),
+                _ => None,
+            },
+            string: match (&self.string, &other.string) {
+                (Some(l), Some(r)) => Some(Box::new(l.intersect(r))),
+                _ => None,
+            },
+            bool: match (&self.bool, &other.bool) {
+                (Some(l), Some(r)) => Some(Box::new(l.intersect(r))),
+                _ => None,
+            },
+            table: match (&self.table, &other.table) {
+                (Some(l), Some(r)) => Some(Box::new(l.intersect(r))),
+                _ => None,
+            },
+            function: match (&self.function, &other.function) {
+                (Some(l), Some(r)) => Some(Box::new(l.intersect(r))),
+                _ => None,
+            },
+        }
     }
 
     pub fn normalize(&self) -> Self {

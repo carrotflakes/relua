@@ -70,18 +70,18 @@ fn f(a: num, b: str) -> (num, str) {
 let a: num, b: str = f(1, "2")
 let a: num, b: bool = f(1, "2"), true
 "#,
-r#"
+        r#"
 type User = {type: "user", name: str}
 let a: User = {type: "user", name: "carrotflakes"}
 "#,
-r#"
+        r#"
 fn f<T>(a: T) -> T {
     return a
 }
 let a: num = f<num>(1)
 let a: str = f<str>("a")
 "#,
-r#"
+        r#"
 fn f<T>(a: T) -> {get: () -> T} {
     return {
         get: fn() -> T {
@@ -92,14 +92,14 @@ fn f<T>(a: T) -> {get: () -> T} {
 let a = f<num>(1)
 print(a.get())
 "#,
-r#"
+        r#"
 type T = num
 fn f<T>(a: T) -> T {
     return a
 }
 f<num>(1)
 f("1")
-"#
+"#,
     ];
     for src in &srcs {
         let prog = parser::program(src).unwrap();
@@ -126,6 +126,13 @@ f("1")
         r#"let f: (num) -> (num) = fn(a: num, b: str) {return 1, "2"}"#,
         r#"let a: {type: "user", name: str} = {type: "user", name: "carrotflakes"}"#,
         r#"(fn<T>(a: T) -> T {return a})<num>("a")"#,
+        r#"let x: num | () = 1 let y: num = x"#,
+        r#"let x: num | () = 1 if x { let y: num = x }"#,
+        r#"let x: num | () = 1 if !x { let y: num = x }"#,
+        r#"let x: num | str = 1 if type(x) == "number" { let y: num = x }"#,
+        r#"let x: num | str = 1 if type(x) == "number" { let y: str = x }"#,
+        r#"let x: {type: "a", a: 1} | {type: "b", b: 2} = {type:"a", a: 1} if x.type == "a" {let y: num = x.a}"#,
+        r#"let x: {type: "a", a: 1} | {type: "b", b: 2} = {type:"a", a: 1} if x.type == "a" {let y: num = x.b}"#,
     ];
     for src in &srcs {
         let prog = parser::program(src).unwrap();

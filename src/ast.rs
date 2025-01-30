@@ -116,6 +116,38 @@ pub enum Literal {
     Bool(bool),
 }
 
+impl Expression {
+    pub fn as_string(&self) -> Option<&str> {
+        match self {
+            Expression::Literal(Literal::String(s)) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn as_variable(&self) -> Option<&str> {
+        match self {
+            Expression::Variable(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// Returns the indexing path of the expression.
+    pub fn indexing_path(&self) -> Option<(String, Vec<ConstData>)> {
+        match self {
+            Expression::Variable(s) => Some((s.clone(), vec![])),
+            Expression::Index { table, index } => {
+                if let Expression::Literal(k) = &***index {
+                    let mut path = table.indexing_path()?;
+                    path.1.push(k.to_const_data());
+                    return Some(path);
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+}
+
 impl Literal {
     pub fn to_const_data(&self) -> ConstData {
         match self {
