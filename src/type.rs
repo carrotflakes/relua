@@ -187,12 +187,9 @@ impl Type {
     }
 
     /// Resolve all variables in the type
-    pub fn resolve(&self, map: &std::collections::HashMap<String, Type>) -> Result<Type, String> {
+    pub fn resolve(&self, map: &dyn Fn(&String) -> Option<Type>) -> Result<Type, String> {
         match self {
-            Type::Variable(name) => map
-                .get(name)
-                .cloned()
-                .ok_or_else(|| format!("Variable {} not found", name)),
+            Type::Variable(name) => map(name).ok_or_else(|| format!("Variable {} not found", name)),
             Type::Union(types) => {
                 let mut types = types
                     .iter()
@@ -246,10 +243,13 @@ impl Type {
                 r.iter().map(|t| t.resolve(map)).collect::<Result<_, _>>()?,
             )),
             Type::Generic(params, t) => {
-                let mut map = map.clone();
-                for p in params {
-                    map.insert(p.clone(), Type::Variable(p.clone()));
-                }
+                let map = |name: &String| {
+                    if params.contains(name) {
+                        Some(Type::Variable(name.clone()))
+                    } else {
+                        map(name)
+                    }
+                };
                 Ok(t.resolve(&map)?)
             }
             t => Ok(t.clone()),
@@ -459,30 +459,21 @@ impl TypeTable {
                         })
                         .map(|other_t| (cd.clone(), t.intersect(&other_t)))
                 })
-                .chain(
-                    other
-                        .consts
+                .chain(other.consts.iter().filter_map(|(cd, t)| {
+                    if self.consts.iter().any(|(self_cd, _)| self_cd == cd) {
+                        return None;
+                    }
+                    self.consts
                         .iter()
-                        .filter_map(|(cd, t)| {
-                            if self
-                                .consts
-                                .iter()
-                                .any(|(self_cd, _)| self_cd == cd)
-                            {
-                                return None;
-                            }
-                            self.consts
-                                .iter()
-                                .find(|(self_cd, _)| self_cd == cd)
-                                .map(|(_, t)| t.clone())
-                                .or_else(|| match cd {
-                                    ConstData::Number(_) => self.number.clone().map(|t| (*t).to_owned()),
-                                    ConstData::String(_) => self.string.clone().map(|t| (*t).to_owned()),
-                                    ConstData::Bool(_) => self.bool.clone().map(|t| (*t).to_owned()),
-                                })
-                                .map(|self_t| (cd.clone(), t.intersect(&self_t)))
-                        }),
-                )
+                        .find(|(self_cd, _)| self_cd == cd)
+                        .map(|(_, t)| t.clone())
+                        .or_else(|| match cd {
+                            ConstData::Number(_) => self.number.clone().map(|t| (*t).to_owned()),
+                            ConstData::String(_) => self.string.clone().map(|t| (*t).to_owned()),
+                            ConstData::Bool(_) => self.bool.clone().map(|t| (*t).to_owned()),
+                        })
+                        .map(|self_t| (cd.clone(), t.intersect(&self_t)))
+                }))
                 .collect(),
             number: match (&self.number, &other.number) {
                 (Some(l), Some(r)) => Some(Box::new(l.intersect(r))),

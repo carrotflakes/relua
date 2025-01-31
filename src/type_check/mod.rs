@@ -9,7 +9,8 @@ thread_local! {
     static SOURCE: std::cell::RefCell<*const str> = std::cell::RefCell::new("");
 }
 
-pub struct Context {
+pub struct Context<'a> {
+    parent: Option<&'a Context<'a>>,
     symbol_table: HashMap<String, Type>,
     symbol_type_guarded: HashMap<String, Type>,
     type_table: HashMap<String, Type>,
@@ -20,20 +21,22 @@ enum ReturnType {
     Infer(Vec<Vec<Type>>),
 }
 
-impl Context {
+impl<'a> Context<'a> {
     pub fn from_symbol_table(symbol_table: HashMap<String, Type>) -> Self {
         Self {
+            parent: None,
             symbol_table,
             symbol_type_guarded: HashMap::new(),
             type_table: HashMap::new(),
         }
     }
 
-    fn child(&self) -> Self {
+    fn child(&'a self) -> Self {
         Self {
-            symbol_table: self.symbol_table.clone(),
-            symbol_type_guarded: self.symbol_type_guarded.clone(),
-            type_table: self.type_table.clone(),
+            parent: Some(self),
+            symbol_table: HashMap::new(),
+            symbol_type_guarded: HashMap::new(),
+            type_table: HashMap::new(),
         }
     }
 
@@ -43,23 +46,35 @@ impl Context {
     }
 
     fn get_symbol_variable_type(&self, name: &str) -> Option<&Type> {
-        self.symbol_table.get(name)
+        self.symbol_table
+            .get(name)
+            .or_else(|| self.parent.and_then(|p| p.get_symbol_variable_type(name)))
     }
 
     fn get_symbol_type(&self, name: &str) -> Option<&Type> {
         self.symbol_type_guarded
             .get(name)
             .or_else(|| self.symbol_table.get(name))
+            .or_else(|| self.parent.and_then(|p| p.get_symbol_type(name)))
     }
 
     fn resolve_type(&self, type_: &Type) -> Result<Type, String> {
-        type_.resolve(&self.type_table)
+        type_.resolve(&|name| {
+            let mut ctx = Some(self);
+            while let Some(c) = ctx {
+                if let Some(t) = c.type_table.get(name) {
+                    return Some(t.clone());
+                }
+                ctx = c.parent;
+            }
+            None
+        })
     }
 
-    fn resolve_types<'a>(&self, iter: impl Iterator<Item = &'a Type>) -> Result<Vec<Type>, String> {
+    fn resolve_types<'b>(&self, iter: impl Iterator<Item = &'b Type>) -> Result<Vec<Type>, String> {
         let mut types = vec![];
         for t in iter {
-            types.push(t.resolve(&self.type_table)?);
+            types.push(self.resolve_type(t)?);
         }
         Ok(types)
     }
@@ -556,12 +571,13 @@ impl Context {
         })
     }
 
-    fn conditioned(&self, condition: &ast::SpannedExpression) -> (Self, Self) {
+    fn conditioned(&'a self, condition: &ast::SpannedExpression) -> (Self, Self) {
         let type_filter = type_filter::expression_to_type_filter(condition);
         if let Some(type_filter) = type_filter {
             let type_filter = type_filter::type_filter_to_dnf(&type_filter);
             let ctx1 = Context {
-                symbol_table: self.symbol_table.clone(),
+                parent: Some(self),
+                symbol_table: HashMap::new(),
                 symbol_type_guarded: self
                     .symbol_table
                     .iter()
@@ -576,10 +592,11 @@ impl Context {
                         }
                     })
                     .collect(),
-                type_table: self.type_table.clone(),
+                type_table: HashMap::new(),
             };
             let ctx2 = Context {
-                symbol_table: self.symbol_table.clone(),
+                parent: Some(self),
+                symbol_table: HashMap::new(),
                 symbol_type_guarded: self
                     .symbol_table
                     .iter()
@@ -594,7 +611,7 @@ impl Context {
                         }
                     })
                     .collect(),
-                type_table: self.type_table.clone(),
+                type_table: HashMap::new(),
             };
             (ctx1, ctx2)
         } else {
