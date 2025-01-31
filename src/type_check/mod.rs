@@ -38,6 +38,7 @@ impl Context {
     }
 
     fn insert(&mut self, name: String, type_: Type) {
+        self.symbol_type_guarded.remove(&name);
         self.symbol_table.insert(name, type_);
     }
 
@@ -74,7 +75,7 @@ impl Context {
 
         let mut return_types = ReturnType::Infer(vec![]);
 
-        self.check_statements(stmts, &mut return_types)?;
+        self.child().check_statements(stmts, &mut return_types)?;
 
         SOURCE.with(|s| {
             *s.borrow_mut() = "";
@@ -84,19 +85,17 @@ impl Context {
     }
 
     fn check_statements(
-        &self,
+        &mut self,
         stmts: &[ast::SpannedStatement],
         return_type: &mut ReturnType,
     ) -> Result<(), String> {
-        let mut ctx = self.child();
-
         for stmt in stmts {
             match &**stmt {
                 ast::Statement::Expression(expression) => {
-                    ctx.check_expression(expression)?;
+                    self.check_expression(expression)?;
                 }
                 ast::Statement::Fn { name, function } => {
-                    let mut ctx1 = ctx.child();
+                    let mut ctx1 = self.child();
                     for p in &function.type_params {
                         ctx1.type_table.insert(p.clone(), Type::Variable(p.clone()));
                     }
@@ -122,35 +121,35 @@ impl Context {
                     );
 
                     let ret_types = ctx1.check_function(function)?;
-                    ctx.insert(
+                    self.insert(
                         name.clone(),
                         wrap_generics(Type::Function(params, ret_types.clone())),
                     );
                 }
                 ast::Statement::Let(vars, exprs) => {
                     if exprs.len() == 1 {
-                        let actual = ctx.check_expression(&exprs[0])?;
+                        let actual = self.check_expression(&exprs[0])?;
                         for i in 0..vars.len() {
                             let var = &vars[i];
                             let actual = actual.get(i).unwrap_or(&Type::Nil).clone();
                             if let Some(expect) = &var.1 {
-                                let expect = ctx.resolve_type(expect)?;
+                                let expect = self.resolve_type(expect)?;
                                 type_match(&expect, &actual, &stmt.span)?;
-                                ctx.insert(var.0.clone(), expect.clone());
+                                self.insert(var.0.clone(), expect.clone());
                             } else {
-                                ctx.insert(var.0.clone(), actual);
+                                self.insert(var.0.clone(), actual);
                             }
                         }
                     } else {
                         for i in 0..vars.len() {
                             let var = &vars[i];
-                            let actual = ctx.check_expression(&exprs[i])?;
+                            let actual = self.check_expression(&exprs[i])?;
                             if let Some(expect) = &var.1 {
-                                let expect = ctx.resolve_type(expect)?;
+                                let expect = self.resolve_type(expect)?;
                                 type_match(&expect, &actual[0], &stmt.span)?;
-                                ctx.insert(var.0.clone(), expect.clone());
+                                self.insert(var.0.clone(), expect.clone());
                             } else {
-                                ctx.insert(var.0.clone(), actual[0].clone());
+                                self.insert(var.0.clone(), actual[0].clone());
                             }
                         }
                     }
@@ -159,20 +158,20 @@ impl Context {
                     let var_types = vars
                         .iter()
                         .map(|var| match var {
-                            ast::LValue::Variable(name) => ctx
+                            ast::LValue::Variable(name) => self
                                 .get_symbol_variable_type(name)
                                 .ok_or_else(|| format!("Variable not found: {}", name))
                                 .map_err(append_loc(&stmt.span))
                                 .map(Clone::clone),
                             ast::LValue::Index(table, index) => {
-                                let table_type = ctx.check_expression(table)?[0].clone();
+                                let table_type = self.check_expression(table)?[0].clone();
                                 match table_type {
                                     Type::Any => {
-                                        ctx.check_expression(index)?;
+                                        self.check_expression(index)?;
                                         Ok(Type::Any)
                                     }
                                     Type::Table(table_type) => {
-                                        let index_type = ctx.check_expression(index)?[0].clone();
+                                        let index_type = self.check_expression(index)?[0].clone();
                                         check_table(&table_type, &index_type)
                                             .map_err(append_loc(&stmt.span))
                                     }
@@ -185,14 +184,14 @@ impl Context {
 
                     if exprs.len() == 1 {
                         // let x, y = f()
-                        let actual = ctx.check_expression(&exprs[0])?;
+                        let actual = self.check_expression(&exprs[0])?;
                         for i in 0..var_types.len() {
-                            let expect = ctx.resolve_type(&var_types[i])?;
+                            let expect = self.resolve_type(&var_types[i])?;
                             let actual = actual.get(i).unwrap_or(&Type::Nil);
                             type_match(&expect, actual, &stmt.span)?;
                             match &vars[i] {
                                 ast::LValue::Variable(v) => {
-                                    ctx.symbol_type_guarded.insert(v.clone(), actual.clone());
+                                    self.symbol_type_guarded.insert(v.clone(), actual.clone());
                                 }
                                 ast::LValue::Index(_, _) => {} // TODO
                             }
@@ -201,15 +200,15 @@ impl Context {
                         // let x, y = 1, 2
                         for i in 0..var_types.len().max(exprs.len()) {
                             let actual = if i < exprs.len() {
-                                ctx.check_expression(&exprs[i])?[0].clone()
+                                self.check_expression(&exprs[i])?[0].clone()
                             } else {
                                 Type::Nil
                             };
-                            let expect = ctx.resolve_type(&var_types[i])?;
+                            let expect = self.resolve_type(&var_types[i])?;
                             type_match(&expect, &actual, &stmt.span)?;
                             match &vars[i] {
                                 ast::LValue::Variable(v) => {
-                                    ctx.symbol_type_guarded.insert(v.clone(), actual.clone());
+                                    self.symbol_type_guarded.insert(v.clone(), actual.clone());
                                 }
                                 ast::LValue::Index(_, _) => {} // TODO
                             }
@@ -221,14 +220,15 @@ impl Context {
                     then,
                     else_,
                 } => {
-                    ctx.check_expression(condition)?;
-                    let (ctx1, ctx2) = ctx.conditioned(condition);
+                    self.check_expression(condition)?;
+                    let (mut ctx1, mut ctx2) = self.conditioned(condition);
                     ctx1.check_statements(then, return_type)?;
                     ctx2.check_statements(else_, return_type)?;
                 }
                 ast::Statement::While { condition, body } => {
-                    ctx.check_expression(condition)?;
-                    ctx.check_statements(body, return_type)?;
+                    self.check_expression(condition)?;
+                    // TODO: type guard
+                    self.child().check_statements(body, return_type)?;
                 }
                 ast::Statement::ForNumeric {
                     variable,
@@ -237,15 +237,15 @@ impl Context {
                     step,
                     body,
                 } => {
-                    let start_type = ctx.check_expression(start)?[0].clone();
+                    let start_type = self.check_expression(start)?[0].clone();
                     type_match(&Type::Number, &start_type, &stmt.span)?;
-                    let end_type = ctx.check_expression(end)?[0].clone();
+                    let end_type = self.check_expression(end)?[0].clone();
                     type_match(&Type::Number, &end_type, &stmt.span)?;
                     if let Some(step) = step {
-                        let step_type = ctx.check_expression(step)?[0].clone();
+                        let step_type = self.check_expression(step)?[0].clone();
                         type_match(&Type::Number, &step_type, &stmt.span)?;
                     }
-                    let mut ctx = ctx.child();
+                    let mut ctx = self.child();
                     ctx.insert(variable.clone(), Type::Number);
                     ctx.check_statements(body, return_type)?;
                 }
@@ -256,9 +256,9 @@ impl Context {
                 } => {
                     // TODO: type check
                     for expr in exprs {
-                        ctx.check_expression(expr)?;
+                        self.check_expression(expr)?;
                     }
-                    let mut ctx = ctx.child();
+                    let mut ctx = self.child();
                     for (name, type_) in variables {
                         ctx.insert(name.clone(), type_.clone().unwrap_or(Type::Any));
                     }
@@ -266,7 +266,7 @@ impl Context {
                 }
                 ast::Statement::Return(exprs) => {
                     if exprs.len() == 1 {
-                        let actual = ctx.check_expression(&exprs[0])?;
+                        let actual = self.check_expression(&exprs[0])?;
                         match return_type {
                             ReturnType::Fixed(expect) => {
                                 for i in 0..expect.len() {
@@ -284,7 +284,7 @@ impl Context {
                     } else {
                         let mut actuals = vec![];
                         for expr in exprs {
-                            let actual = ctx.check_expression(expr)?;
+                            let actual = self.check_expression(expr)?;
                             actuals.push(actual[0].clone());
                         }
                         match return_type {
@@ -305,7 +305,7 @@ impl Context {
                 }
                 ast::Statement::Break => {}
                 ast::Statement::TypeAlias(name, type_) => {
-                    ctx.type_table.insert(name.clone(), type_.clone());
+                    self.type_table.insert(name.clone(), type_.clone());
                 }
             }
         }
