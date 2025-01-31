@@ -156,42 +156,49 @@ impl Context {
                     }
                 }
                 ast::Statement::Assignment { vars, exprs } => {
-                    let mut var_types = vec![];
-                    for var in vars {
-                        let var_type = match var {
+                    let var_types = vars
+                        .iter()
+                        .map(|var| match var {
                             ast::LValue::Variable(name) => ctx
                                 .get_symbol_variable_type(name)
                                 .ok_or_else(|| format!("Variable not found: {}", name))
-                                .map_err(append_loc(&stmt.span))?
-                                .clone(),
+                                .map_err(append_loc(&stmt.span))
+                                .map(Clone::clone),
                             ast::LValue::Index(table, index) => {
                                 let table_type = ctx.check_expression(table)?[0].clone();
                                 match table_type {
                                     Type::Any => {
                                         ctx.check_expression(index)?;
-                                        Type::Any
+                                        Ok(Type::Any)
                                     }
                                     Type::Table(table_type) => {
                                         let index_type = ctx.check_expression(index)?[0].clone();
                                         check_table(&table_type, &index_type)
-                                            .map_err(append_loc(&stmt.span))?
+                                            .map_err(append_loc(&stmt.span))
                                     }
-                                    _ => {
-                                        return Err(format!("Not a table: {}", table_type))
-                                            .map_err(append_loc(&stmt.span));
-                                    }
+                                    _ => Err(format!("Not a table: {}", table_type))
+                                        .map_err(append_loc(&stmt.span)),
                                 }
                             }
-                        };
-                        var_types.push(var_type);
-                    }
+                        })
+                        .collect::<Result<Vec<_>, _>>()?;
+
                     if exprs.len() == 1 {
+                        // let x, y = f()
                         let actual = ctx.check_expression(&exprs[0])?;
                         for i in 0..var_types.len() {
                             let expect = ctx.resolve_type(&var_types[i])?;
-                            type_match(&expect, actual.get(i).unwrap_or(&Type::Nil), &stmt.span)?;
+                            let actual = actual.get(i).unwrap_or(&Type::Nil);
+                            type_match(&expect, actual, &stmt.span)?;
+                            match &vars[i] {
+                                ast::LValue::Variable(v) => {
+                                    ctx.symbol_type_guarded.insert(v.clone(), actual.clone());
+                                }
+                                ast::LValue::Index(_, _) => {} // TODO
+                            }
                         }
                     } else {
+                        // let x, y = 1, 2
                         for i in 0..var_types.len().max(exprs.len()) {
                             let actual = if i < exprs.len() {
                                 ctx.check_expression(&exprs[i])?[0].clone()
@@ -200,6 +207,12 @@ impl Context {
                             };
                             let expect = ctx.resolve_type(&var_types[i])?;
                             type_match(&expect, &actual, &stmt.span)?;
+                            match &vars[i] {
+                                ast::LValue::Variable(v) => {
+                                    ctx.symbol_type_guarded.insert(v.clone(), actual.clone());
+                                }
+                                ast::LValue::Index(_, _) => {} // TODO
+                            }
                         }
                     }
                 }
