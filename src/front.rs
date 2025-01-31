@@ -223,6 +223,7 @@ peg::parser!(pub grammar parser() for str {
         / "()" { Type::Nil }
         / "unknown" { Type::Unknown }
         / "any" { Type::Any }
+        / "never" { Type::never() }
         / l:literal() { Type::Const(l.to_const_data()) }
 
     rule type_params() -> Vec<String>
