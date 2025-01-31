@@ -1,6 +1,7 @@
 mod type_filter;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::ast;
 use crate::r#type::{ConstData, Type, TypeTable};
@@ -11,8 +12,8 @@ thread_local! {
 
 pub struct Context<'a> {
     parent: Option<&'a Context<'a>>,
-    symbol_table: HashMap<String, Type>,
-    symbol_type_guarded: HashMap<String, Type>,
+    symbol_table: HashMap<String, Arc<Type>>,
+    symbol_type_guarded: HashMap<*const Type, Type>,
     type_table: HashMap<String, Type>,
 }
 
@@ -25,7 +26,10 @@ impl<'a> Context<'a> {
     pub fn from_symbol_table(symbol_table: HashMap<String, Type>) -> Self {
         Self {
             parent: None,
-            symbol_table,
+            symbol_table: symbol_table
+                .into_iter()
+                .map(|(name, type_)| (name.clone(), Arc::new(type_)))
+                .collect(),
             symbol_type_guarded: HashMap::new(),
             type_table: HashMap::new(),
         }
@@ -41,21 +45,25 @@ impl<'a> Context<'a> {
     }
 
     fn insert(&mut self, name: String, type_: Type) {
-        self.symbol_type_guarded.remove(&name);
-        self.symbol_table.insert(name, type_);
+        self.symbol_table.insert(name.clone(), Arc::new(type_));
     }
 
-    fn get_symbol_variable_type(&self, name: &str) -> Option<&Type> {
+    fn get_symbol_variable_type(&self, name: &str) -> Option<&Arc<Type>> {
         self.symbol_table
             .get(name)
             .or_else(|| self.parent.and_then(|p| p.get_symbol_variable_type(name)))
     }
 
     fn get_symbol_type(&self, name: &str) -> Option<&Type> {
-        self.symbol_type_guarded
-            .get(name)
-            .or_else(|| self.symbol_table.get(name))
-            .or_else(|| self.parent.and_then(|p| p.get_symbol_type(name)))
+        let at = self.get_symbol_variable_type(name)?;
+        let mut ctx = Some(self);
+        while let Some(c) = ctx {
+            if let Some(t) = c.symbol_type_guarded.get(&Arc::as_ptr(&at)) {
+                return Some(t);
+            }
+            ctx = c.parent;
+        }
+        Some(&**at)
     }
 
     fn resolve_type(&self, type_: &Type) -> Result<Type, String> {
@@ -177,7 +185,7 @@ impl<'a> Context<'a> {
                                 .get_symbol_variable_type(name)
                                 .ok_or_else(|| format!("Variable not found: {}", name))
                                 .map_err(append_loc(&stmt.span))
-                                .map(Clone::clone),
+                                .map(|t| (**t).clone()),
                             ast::LValue::Index(table, index) => {
                                 let table_type = self.check_expression(table)?[0].clone();
                                 match table_type {
@@ -206,7 +214,8 @@ impl<'a> Context<'a> {
                             type_match(&expect, actual, &stmt.span)?;
                             match &vars[i] {
                                 ast::LValue::Variable(v) => {
-                                    self.symbol_type_guarded.insert(v.clone(), actual.clone());
+                                    let v = self.get_symbol_variable_type(v).unwrap();
+                                    self.symbol_type_guarded.insert(&**v, actual.clone());
                                 }
                                 ast::LValue::Index(_, _) => {} // TODO
                             }
@@ -223,7 +232,8 @@ impl<'a> Context<'a> {
                             type_match(&expect, &actual, &stmt.span)?;
                             match &vars[i] {
                                 ast::LValue::Variable(v) => {
-                                    self.symbol_type_guarded.insert(v.clone(), actual.clone());
+                                    let v = self.get_symbol_variable_type(v).unwrap();
+                                    self.symbol_type_guarded.insert(&**v, actual.clone());
                                 }
                                 ast::LValue::Index(_, _) => {} // TODO
                             }
@@ -239,6 +249,36 @@ impl<'a> Context<'a> {
                     let (mut ctx1, mut ctx2) = self.conditioned(condition);
                     ctx1.check_statements(then, return_type)?;
                     ctx2.check_statements(else_, return_type)?;
+
+                    // Update type guard:
+                    // self = ctx1 | ctx2
+                    let mut vs =
+                        ctx1.symbol_type_guarded
+                            .keys()
+                            .filter(|v| !ctx1.symbol_table.values().any(|t| Arc::as_ptr(t) == **v))
+                            .chain(ctx2.symbol_type_guarded.keys().filter(|v| {
+                                !ctx2.symbol_table.values().any(|t| Arc::as_ptr(t) == **v)
+                            }))
+                            .collect::<Vec<_>>();
+                    vs.sort_unstable();
+                    vs.dedup();
+                    let mut new_guard = self.symbol_type_guarded.clone();
+                    for v in vs {
+                        let t = self.symbol_type_guarded.get(v);
+                        let t1 = ctx1.symbol_type_guarded.get(v).or(t);
+                        let t2 = ctx2.symbol_type_guarded.get(v).or(t);
+                        if let (Some(t1), Some(t2)) = (t1, t2) {
+                            if t1 == t2 {
+                                new_guard.insert(*v, t1.clone());
+                            } else {
+                                new_guard.insert(
+                                    *v,
+                                    Type::Union(vec![t1.clone(), t2.clone()]).normalize(),
+                                );
+                            }
+                        }
+                    }
+                    self.symbol_type_guarded = new_guard;
                 }
                 ast::Statement::While { condition, body } => {
                     self.check_expression(condition)?;
@@ -581,14 +621,14 @@ impl<'a> Context<'a> {
                 symbol_type_guarded: self
                     .symbol_table
                     .iter()
-                    .filter_map(|(name, _)| {
+                    .filter_map(|(name, at)| {
                         let r#type = self.get_symbol_type(name).unwrap();
                         let type_ =
                             type_filter::type_filter_apply(&type_filter, name, r#type, false);
                         if r#type == &type_ {
                             None
                         } else {
-                            Some((name.clone(), type_))
+                            Some((Arc::as_ptr(at), type_))
                         }
                     })
                     .collect(),
@@ -600,14 +640,14 @@ impl<'a> Context<'a> {
                 symbol_type_guarded: self
                     .symbol_table
                     .iter()
-                    .filter_map(|(name, _)| {
+                    .filter_map(|(name, at)| {
                         let r#type = self.get_symbol_type(name).unwrap();
                         let type_ =
                             type_filter::type_filter_apply(&type_filter, name, r#type, true);
                         if r#type == &type_ {
                             None
                         } else {
-                            Some((name.clone(), type_))
+                            Some((Arc::as_ptr(at), type_))
                         }
                     })
                     .collect(),
