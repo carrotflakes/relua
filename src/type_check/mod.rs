@@ -1,6 +1,7 @@
 mod type_filter;
 
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::sync::Arc;
 
 use crate::ast;
@@ -132,7 +133,7 @@ impl<'a> Context<'a> {
 
                     // Add function to bindings to allow recursion
                     ctx1.insert(
-                        name.clone(),
+                        name.deref().clone(),
                         wrap_generics(Type::Function(
                             params.clone(),
                             if let Some(t) = &function.return_types {
@@ -145,7 +146,7 @@ impl<'a> Context<'a> {
 
                     let ret_types = ctx1.check_function(function)?;
                     self.insert(
-                        name.clone(),
+                        name.deref().clone(),
                         wrap_generics(Type::Function(params, ret_types.clone())),
                     );
                 }
@@ -157,10 +158,10 @@ impl<'a> Context<'a> {
                             let actual = actual.get(i).unwrap_or(&Type::Nil).clone();
                             if let Some(expect) = &var.1 {
                                 let expect = self.resolve_type(expect)?;
-                                type_match(&expect, &actual, &stmt.span)?;
-                                self.insert(var.0.clone(), expect.clone());
+                                type_match(&expect, &actual, &var.0.span)?;
+                                self.insert(var.0.deref().clone(), expect.clone());
                             } else {
-                                self.insert(var.0.clone(), actual);
+                                self.insert(var.0.deref().clone(), actual);
                             }
                         }
                     } else {
@@ -169,10 +170,10 @@ impl<'a> Context<'a> {
                             let actual = self.check_expression(&exprs[i])?;
                             if let Some(expect) = &var.1 {
                                 let expect = self.resolve_type(expect)?;
-                                type_match(&expect, &actual[0], &stmt.span)?;
-                                self.insert(var.0.clone(), expect.clone());
+                                type_match(&expect, &actual[0], &var.0.span)?;
+                                self.insert(var.0.deref().clone(), expect.clone());
                             } else {
-                                self.insert(var.0.clone(), actual[0].clone());
+                                self.insert(var.0.deref().clone(), actual[0].clone());
                             }
                         }
                     }
@@ -301,7 +302,7 @@ impl<'a> Context<'a> {
                         type_match(&Type::Number, &step_type, &stmt.span)?;
                     }
                     let mut ctx = self.child();
-                    ctx.insert(variable.clone(), Type::Number);
+                    ctx.insert(variable.deref().clone(), Type::Number);
                     ctx.check_statements(body, return_type)?;
                 }
                 ast::Statement::ForGeneric {
@@ -315,7 +316,8 @@ impl<'a> Context<'a> {
                     }
                     let mut ctx = self.child();
                     for (name, type_) in variables {
-                        ctx.insert(name.clone(), type_.clone().unwrap_or(Type::Any));
+                        // TODO: We can resolve the type from exprs, can't we?
+                        ctx.insert(name.deref().clone(), type_.clone().unwrap_or(Type::Any));
                     }
                     ctx.check_statements(body, return_type)?;
                 }

@@ -31,7 +31,7 @@ fn statements(writer: &mut impl Write, stmts: &[ast::SpannedStatement]) -> std::
                 writer.write_str(";\n")?;
             }
             ast::Statement::Fn { name, function } => {
-                writer.write_str(&format!("local function {}(", name))?;
+                writer.write_str(&format!("local function {}(", &**name))?;
                 for (i, param) in function.parameters.iter().enumerate() {
                     if i > 0 {
                         writer.write_str(", ")?;

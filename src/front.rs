@@ -38,7 +38,7 @@ peg::parser!(pub grammar parser() for str {
         >)
 
     rule let_stmt() -> Statement
-        = "let" vs:((_ name:identifier() _ t:(":" _ t:type_() _ { t })? { (name, t) }) ++ ",") "=" es:((_ e:expression() _ { e }) ++ ",") { Statement::Let(vs, es) }
+        = "let" vs:((_ name:spanned_identifier() _ t:(":" _ t:type_() _ { t })? { (name, t) }) ++ ",") "=" es:((_ e:expression() _ { e }) ++ ",") { Statement::Let(vs, es) }
 
     rule if_else() -> Statement
         = "if" _ e:expression() _ "{" _
@@ -52,12 +52,12 @@ peg::parser!(pub grammar parser() for str {
         { Statement::While { condition: e, body: loop_body } }
 
     rule for_numeric() -> Statement
-        = "for" _ i:identifier() _ "=" _ s:expression() _ "," _ e:expression() step:(_ "," _ e:expression() _ { e })? _ "{" _
+        = "for" _ i:spanned_identifier() _ "=" _ s:expression() _ "," _ e:expression() step:(_ "," _ e:expression() _ { e })? _ "{" _
         body:statements() _ "}"
         { Statement::ForNumeric { variable: i, start: s, end: e, step, body } }
 
     rule for_generic() -> Statement
-        = "for" _ vs:((_ name:identifier() _ t:(":" _ t:type_() _ { t })? { (name, t) }) ++ ",") _ "in" _ es:((_ e:expression() _ { e }) ++ ",") _ "{" _
+        = "for" _ vs:((_ name:spanned_identifier() _ t:(":" _ t:type_() _ { t })? { (name, t) }) ++ ",") _ "in" _ es:((_ e:expression() _ { e }) ++ ",") _ "{" _
         body:statements() _ "}"
         { Statement::ForGeneric { variables: vs, exprs: es, body } }
 
@@ -70,7 +70,7 @@ peg::parser!(pub grammar parser() for str {
         }
 
     rule def_function() -> Statement
-        = "fn" _ name:identifier() _ tps:type_params() _
+        = "fn" _ name:spanned_identifier() _ tps:type_params() _
         "(" params:((_ i:identifier() _ ":" _ t:type_() {(i, t)}) ** ",") ")" _
         rt:ret_types()?
         "{" _ stmts:statements() _ "}"
@@ -159,6 +159,9 @@ peg::parser!(pub grammar parser() for str {
     rule identifier() -> String
         = quiet!{ n:$(['a'..='z' | 'A'..='Z' | '_']['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*) {? if !FORBIDDEN_IDENTIFIERS.contains(&n) { Ok(n.to_owned()) } else { Err("Keyword is not a identifier") } } }
         / expected!("identifier")
+
+    rule spanned_identifier() -> Spanned<String>
+        = pb:position!() i:identifier() pe:position!() { spanned(pb, pe, i) }
 
     rule key() -> String
         = quiet!{ n:$(['a'..='z' | 'A'..='Z' | '_']['a'..='z' | 'A'..='Z' | '0'..='9' | '_']*) { n.to_owned() } }

@@ -29,9 +29,10 @@ impl<T> std::ops::Deref for Spanned<T> {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Expression(SpannedExpression),
-    Let(Vec<(String, Option<Type>)>, Vec<SpannedExpression>),
+    Let(Vec<(Spanned<String>, Option<Type>)>, Vec<SpannedExpression>),
     Fn {
-        name: String,
+        // This Spanned<String> is requested by the LSP protocol.
+        name: Spanned<String>,
         function: Function,
     },
     Assignment {
@@ -48,14 +49,15 @@ pub enum Statement {
         body: Vec<SpannedStatement>,
     },
     ForNumeric {
-        variable: String,
+        // This Spanned<String> is requested by the LSP protocol.
+        variable: Spanned<String>,
         start: SpannedExpression,
         end: SpannedExpression,
         step: Option<SpannedExpression>,
         body: Vec<SpannedStatement>,
     },
     ForGeneric {
-        variables: Vec<(String, Option<Type>)>,
+        variables: Vec<(Spanned<String>, Option<Type>)>,
         exprs: Vec<SpannedExpression>,
         body: Vec<SpannedStatement>,
     },
