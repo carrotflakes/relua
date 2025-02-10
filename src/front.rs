@@ -126,6 +126,13 @@ peg::parser!(pub grammar parser() for str {
         = "//" {? if cfg!(feature = "idiv") {Ok(())} else {Err("// operator is not supported.")} }
 
     rule unary_op() -> Expression
+        = t:table_items() { Expression::Table(t) }
+        / f:function() { Expression::Fn(f) }
+        / i:identifier() { Expression::Variable(i) }
+        / l:literal() { Expression::Literal(l) }
+        / "()" { Expression::Nil }
+
+    rule table_items() -> Vec<(TableKey, SpannedExpression)>
         = "{" _ ts:((_ t:table_entry() _ { t }) ** ",") ","? _ "}" {
             let mut tes = vec![];
             let mut i = 1;
@@ -137,12 +144,8 @@ peg::parser!(pub grammar parser() for str {
                     i += 1;
                 }
             }
-            Expression::Table(tes)
+            tes
         }
-        / f:function() { Expression::Fn(f) }
-        / i:identifier() { Expression::Variable(i) }
-        / l:literal() { Expression::Literal(l) }
-        / "()" { Expression::Nil }
 
     rule table_entry() -> (Option<TableKey>, SpannedExpression)
         = k:literal() _ ":" _ v:expression() { (Some(TableKey::Literal(k)), v) }
