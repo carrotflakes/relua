@@ -1,7 +1,6 @@
 use crate::r#type::{ConstData, Type};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Span(pub std::ops::Range<usize>);
+pub type Span = std::ops::Range<usize>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Spanned<T> {
@@ -13,7 +12,7 @@ impl<T> Spanned<T> {
     pub fn none(node: T) -> Self {
         Spanned {
             node,
-            span: Span(0..0),
+            span: 0..0,
         }
     }
 }

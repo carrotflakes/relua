@@ -740,9 +740,9 @@ impl ReturnType {
 }
 
 fn append_loc(span: &ast::Span) -> impl Fn(String) -> String {
-    let pos = span.0.start;
+    let pos = span.start;
     move |msg| {
-        let src = SOURCE.with(|s| unsafe { &**s.borrow() });
+        let src = SOURCE.with(|s: &std::cell::RefCell<*const str>| unsafe { &**s.borrow() });
         let loc = row_and_col(src, pos);
         format!("{} at {:?}", msg, loc)
     }

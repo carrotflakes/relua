@@ -89,16 +89,16 @@ peg::parser!(pub grammar parser() for str {
         }
 
     rule expression() -> SpannedExpression = precedence!{
-        a:(@) _ "||" _ b:@ { spanned(a.span.0.start, b.span.0.end, Expression::LogicalOr(Box::new(a), Box::new(b))) }
+        a:(@) _ "||" _ b:@ { spanned(a.span.start, b.span.end, Expression::LogicalOr(Box::new(a), Box::new(b))) }
         --
-        a:(@) _ "&&" _ b:@ { spanned(a.span.0.start, b.span.0.end, Expression::LogicalAnd(Box::new(a), Box::new(b))) }
+        a:(@) _ "&&" _ b:@ { spanned(a.span.start, b.span.end, Expression::LogicalAnd(Box::new(a), Box::new(b))) }
         --
         a:(@) _ "==" _ b:@ { bin_op_expr("__eq", a, b) }
-        a:(@) _ "!=" _ b:@ { spanned(a.span.0.start, b.span.0.end, Expression::LogicalNot(Box::new(bin_op_expr("__eq", a, b)))) }
+        a:(@) _ "!=" _ b:@ { spanned(a.span.start, b.span.end, Expression::LogicalNot(Box::new(bin_op_expr("__eq", a, b)))) }
         a:(@) _ !type_args() "<"  _ b:@ { bin_op_expr("__lt", a, b) }
         a:(@) _ "<=" _ b:@ { bin_op_expr("__le", a, b) }
-        a:(@) _ ">"  _ b:@ { spanned(a.span.0.start, b.span.0.end, Expression::LogicalNot(Box::new(bin_op_expr("__le", a, b)))) }
-        a:(@) _ ">=" _ b:@ { spanned(a.span.0.start, b.span.0.end, Expression::LogicalNot(Box::new(bin_op_expr("__lt", a, b)))) }
+        a:(@) _ ">"  _ b:@ { spanned(a.span.start, b.span.end, Expression::LogicalNot(Box::new(bin_op_expr("__le", a, b)))) }
+        a:(@) _ ">=" _ b:@ { spanned(a.span.start, b.span.end, Expression::LogicalNot(Box::new(bin_op_expr("__lt", a, b)))) }
         --
         a:(@) _ "+" _ b:@ { bin_op_expr("__add", a, b) }
         a:(@) _ "-" _ b:@ { bin_op_expr("__sub", a, b) }
@@ -108,16 +108,16 @@ peg::parser!(pub grammar parser() for str {
         a:(@) _ idiv_op() _ b:@ { bin_op_expr("__idiv", a, b) }
         a:(@) _ "%" _ b:@ { bin_op_expr("__mod", a, b) }
         --
-        pb:position!() "-" _ e:@ { spanned(pb, e.span.0.end, function_expr("__neg", vec![e])) }
-        pb:position!() "!" _ e:@ { spanned(pb, e.span.0.end, Expression::LogicalNot(Box::new(e))) }
+        pb:position!() "-" _ e:@ { spanned(pb, e.span.end, function_expr("__neg", vec![e])) }
+        pb:position!() "!" _ e:@ { spanned(pb, e.span.end, Expression::LogicalNot(Box::new(e))) }
         --
         a:@ _ "^" _ b:(@) { bin_op_expr("__pow", a, b) }
         --
-        pb:position!() "len!" _ a:@ { spanned(pb, a.span.0.end, function_expr("__len", vec![a])) }
-        a:@ _ "[" _ b:expression() _ "]" pe:position!() { spanned(a.span.0.start, pe, Expression::Index { table: Box::new(a), index: Box::new(b) }) }
-        a:@ _ "(" _ args:((_ e:expression() _ {e}) ** ",") ")" pe:position!() { spanned(a.span.0.start, pe, Expression::Call { function: Box::new(a), arguments: args }) }
-        a:@ _ ts:type_args() pe:position!() { spanned(a.span.0.start, pe, Expression::TypeResolve(Box::new(a), ts)) }
-        a:@ _ "." _ pi:position!() b:identifier() pe:position!() { spanned(a.span.0.start, pe, Expression::Index { table: Box::new(a), index: Box::new(spanned(pi, pe, Expression::Literal(Literal::String(b)))) }) }
+        pb:position!() "len!" _ a:@ { spanned(pb, a.span.end, function_expr("__len", vec![a])) }
+        a:@ _ "[" _ b:expression() _ "]" pe:position!() { spanned(a.span.start, pe, Expression::Index { table: Box::new(a), index: Box::new(b) }) }
+        a:@ _ "(" _ args:((_ e:expression() _ {e}) ** ",") ")" pe:position!() { spanned(a.span.start, pe, Expression::Call { function: Box::new(a), arguments: args }) }
+        a:@ _ ts:type_args() pe:position!() { spanned(a.span.start, pe, Expression::TypeResolve(Box::new(a), ts)) }
+        a:@ _ "." _ pi:position!() b:identifier() pe:position!() { spanned(a.span.start, pe, Expression::Index { table: Box::new(a), index: Box::new(spanned(pi, pe, Expression::Literal(Literal::String(b)))) }) }
         "(" _ e:expression() _ ")" { e }
         u:spanned_expr(<unary_op()>) { u }
     }
@@ -257,8 +257,8 @@ fn function_expr(name: &str, args: Vec<SpannedExpression>) -> Expression {
 
 fn bin_op_expr(name: &str, a: SpannedExpression, b: SpannedExpression) -> SpannedExpression {
     spanned(
-        a.span.0.start,
-        b.span.0.end,
+        a.span.start,
+        b.span.end,
         Expression::Call {
             function: Box::new(Spanned::none(Expression::Literal(Literal::String(
                 name.to_owned(),
@@ -271,7 +271,7 @@ fn bin_op_expr(name: &str, a: SpannedExpression, b: SpannedExpression) -> Spanne
 fn spanned<T>(start: usize, end: usize, value: T) -> Spanned<T> {
     Spanned {
         node: value,
-        span: Span(start..end),
+        span: start..end,
     }
 }
 
