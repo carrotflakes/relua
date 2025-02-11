@@ -179,8 +179,26 @@ peg::parser!(pub grammar parser() for str {
     rule type_() -> Type = precedence!{
         a:(@) _ "|" _ b:@ { Type::Union(vec![a, b]).normalize() }
         --
+        t:type_table() { t }
+        a:type_function() { a }
+        a:type_atom() { a }
+        i:identifier() { Type::Variable(i) }
+    }
+
+    rule spanned_stmt(f: rule<Statement>) -> SpannedStatement
+        = pb:position!() s:f() pe:position!() { spanned(pb, pe, s) }
+
+    rule spanned_expr(f: rule<Expression>) -> SpannedExpression
+        = pb:position!() e:f() pe:position!() { spanned(pb, pe, e) }
+
+    rule type_table_entry() -> (Option<Literal>, Type)
+        = k:literal() _ ":" _ v:type_() { (Some(k), v) }
+        / i:key() _ ":" _ t:type_() { (Some(Literal::String(i)), t) }
+        / t:type_() { (None, t) }
+
+    rule type_table() -> Type
         // TODO: {, [str]: num}
-        "{" _ cs:((_ t:type_table_entry() _ { t }) ** ",") ","? ts:((_ "[" k:$("num" / "str" / "bool" / "table" / "fn") "]" _ ":" _ v:type_() _ { (k, v) }) ** ",") ","? _ "}"
+        = "{" _ cs:((_ t:type_table_entry() _ { t }) ** ",") ","? ts:((_ "[" k:$("num" / "str" / "bool" / "table" / "fn") "]" _ ":" _ v:type_() _ { (k, v) }) ** ",") ","? _ "}"
         {
             let mut tes = vec![];
             let mut i = 1;
@@ -199,21 +217,6 @@ peg::parser!(pub grammar parser() for str {
             let function = ts.iter().find(|(k, _)| *k == "fn").map(|(_, v)| Box::new(v.clone()));
             Type::Table(TypeTable { consts: tes, number, string, bool, table, function })
         }
-        a:type_function() { a }
-        a:type_atom() { a }
-        i:identifier() { Type::Variable(i) }
-    }
-
-    rule spanned_stmt(f: rule<Statement>) -> SpannedStatement
-        = pb:position!() s:f() pe:position!() { spanned(pb, pe, s) }
-
-    rule spanned_expr(f: rule<Expression>) -> SpannedExpression
-        = pb:position!() e:f() pe:position!() { spanned(pb, pe, e) }
-
-    rule type_table_entry() -> (Option<Literal>, Type)
-        = k:literal() _ ":" _ v:type_() { (Some(k), v) }
-        / i:key() _ ":" _ t:type_() { (Some(Literal::String(i)), t) }
-        / t:type_() { (None, t) }
 
     rule type_function() -> Type
         = "(" _ ps:((_ t:type_() _ { t }) ** ",") ")" _ rt:ret_types() { Type::Function(ps, rt) }
