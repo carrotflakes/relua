@@ -9,6 +9,7 @@ use crate::r#type::{ConstData, Type, TypeTable};
 
 thread_local! {
     static SOURCE: std::cell::RefCell<*const str> = std::cell::RefCell::new("");
+    static INFER_RESULT: std::cell::RefCell<Option<Vec<(ast::Span, Type)>>> = std::cell::RefCell::new(None);
 }
 
 pub struct Context<'a> {
@@ -45,8 +46,17 @@ impl<'a> Context<'a> {
         }
     }
 
-    fn insert(&mut self, name: String, type_: Type) {
-        self.symbol_table.insert(name.clone(), Arc::new(type_));
+    fn insert(&mut self, name: String, type_: Type, span: Option<ast::Span>) {
+        self.symbol_table
+            .insert(name.clone(), Arc::new(type_.clone()));
+
+        if let Some(span) = span {
+            INFER_RESULT.with(|r| {
+                if let Some(report) = &mut *r.borrow_mut() {
+                    report.push((span, type_.clone()));
+                }
+            });
+        }
     }
 
     fn get_symbol_variable_type(&self, name: &str) -> Option<&Arc<Type>> {
@@ -108,6 +118,22 @@ impl<'a> Context<'a> {
         Ok(return_types.into_types())
     }
 
+    pub fn type_inference(
+        &self,
+        stmts: &[ast::SpannedStatement],
+        source: &str,
+    ) -> Result<Vec<(ast::Span, Type)>, String> {
+        INFER_RESULT.with(|r| {
+            *r.borrow_mut() = Some(vec![]);
+        });
+
+        self.check_program(stmts, source)?;
+
+        let res = INFER_RESULT.with(|r| r.borrow_mut().take().unwrap());
+
+        Ok(res)
+    }
+
     fn check_statements(
         &mut self,
         stmts: &[ast::SpannedStatement],
@@ -142,12 +168,14 @@ impl<'a> Context<'a> {
                                 vec![]
                             }, // unknown?
                         )),
+                        None,
                     );
 
                     let ret_types = ctx1.check_function(function)?;
                     self.insert(
                         name.deref().clone(),
                         wrap_generics(Type::Function(params, ret_types.clone())),
+                        Some(name.span.clone()),
                     );
                 }
                 ast::Statement::Let(vars, exprs) => {
@@ -159,9 +187,17 @@ impl<'a> Context<'a> {
                             if let Some(expect) = &var.1 {
                                 let expect = self.resolve_type(expect)?;
                                 type_match(&expect, &actual, &var.0.span)?;
-                                self.insert(var.0.deref().clone(), expect.clone());
+                                self.insert(
+                                    var.0.deref().clone(),
+                                    expect.clone(),
+                                    Some(var.0.span.clone()),
+                                );
                             } else {
-                                self.insert(var.0.deref().clone(), actual);
+                                self.insert(
+                                    var.0.deref().clone(),
+                                    actual,
+                                    Some(var.0.span.clone()),
+                                );
                             }
                         }
                     } else {
@@ -171,9 +207,17 @@ impl<'a> Context<'a> {
                             if let Some(expect) = &var.1 {
                                 let expect = self.resolve_type(expect)?;
                                 type_match(&expect, &actual[0], &var.0.span)?;
-                                self.insert(var.0.deref().clone(), expect.clone());
+                                self.insert(
+                                    var.0.deref().clone(),
+                                    expect.clone(),
+                                    Some(var.0.span.clone()),
+                                );
                             } else {
-                                self.insert(var.0.deref().clone(), actual[0].clone());
+                                self.insert(
+                                    var.0.deref().clone(),
+                                    actual[0].clone(),
+                                    Some(var.0.span.clone()),
+                                );
                             }
                         }
                     }
@@ -184,7 +228,7 @@ impl<'a> Context<'a> {
                         .map(|var| match var {
                             ast::LValue::Variable(name) => self
                                 .get_symbol_variable_type(name)
-                                .ok_or_else(|| format!("Variable not found: {}", name))
+                                .ok_or_else(|| format!("Variable not found: {}", &**name))
                                 .map_err(append_loc(&stmt.span))
                                 .map(|t| (**t).clone()),
                             ast::LValue::Index(table, index) => {
@@ -302,7 +346,11 @@ impl<'a> Context<'a> {
                         type_match(&Type::Number, &step_type, &stmt.span)?;
                     }
                     let mut ctx = self.child();
-                    ctx.insert(variable.deref().clone(), Type::Number);
+                    ctx.insert(
+                        variable.deref().clone(),
+                        Type::Number,
+                        Some(variable.span.clone()),
+                    );
                     ctx.check_statements(body, return_type)?;
                 }
                 ast::Statement::ForGeneric {
@@ -317,7 +365,11 @@ impl<'a> Context<'a> {
                     let mut ctx = self.child();
                     for (name, type_) in variables {
                         // TODO: We can resolve the type from exprs, can't we?
-                        ctx.insert(name.deref().clone(), type_.clone().unwrap_or(Type::Any));
+                        ctx.insert(
+                            name.deref().clone(),
+                            type_.clone().unwrap_or(Type::Any),
+                            Some(name.span.clone()),
+                        );
                     }
                     ctx.check_statements(body, return_type)?;
                 }
@@ -373,7 +425,7 @@ impl<'a> Context<'a> {
         let mut ctx = self.child();
 
         for (name, type_) in &function.parameters {
-            ctx.insert(name.clone(), self.resolve_type(type_)?);
+            ctx.insert((**name).clone(), self.resolve_type(type_)?, None);
         }
 
         let mut ret_types = match &function.return_types {
@@ -402,7 +454,7 @@ impl<'a> Context<'a> {
             ast::Expression::Variable(name) => {
                 let val = self
                     .get_symbol_type(name)
-                    .ok_or_else(|| format!("Variable not found: {}", name))
+                    .ok_or_else(|| format!("Variable not found: {}", &**name))
                     .map_err(append_loc(&expr.span))?
                     .clone();
                 vec![val]

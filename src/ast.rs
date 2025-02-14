@@ -10,10 +10,7 @@ pub struct Spanned<T> {
 
 impl<T> Spanned<T> {
     pub fn none(node: T) -> Self {
-        Spanned {
-            node,
-            span: 0..0,
-        }
+        Spanned { node, span: 0..0 }
     }
 }
 
@@ -93,7 +90,7 @@ pub type SpannedExpression = Spanned<Expression>;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
     pub type_params: Vec<String>,
-    pub parameters: Vec<(String, Type)>,
+    pub parameters: Vec<(Spanned<String>, Type)>,
     pub return_types: Option<Vec<Type>>,
     pub body: Vec<SpannedStatement>,
 }
