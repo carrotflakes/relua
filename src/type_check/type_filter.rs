@@ -113,81 +113,11 @@ pub fn expression_to_type_filter(expr: &ast::SpannedExpression) -> Option<TypeFi
         ast::Expression::Call {
             function,
             arguments,
-        } => {
-            if function.as_string() == Some(&"__eq") {
-                for (i1, i2) in [(0, 1), (1, 0)] {
-                    // Check: type(x) == "number"
-                    if let ast::Expression::Call {
-                        function,
-                        arguments: args2,
-                    } = &*arguments[i1]
-                    {
-                        // FIXME: We should check the type of the function
-                        if function.as_variable() == Some(&"type") {
-                            if let Some(path) = args2[0].indexing_path() {
-                                match arguments[i2].as_string() {
-                                    Some("number") => {
-                                        return Some(TypeFilter::Item(
-                                            path.0,
-                                            path.1,
-                                            TypeFilterItem::Number,
-                                        ))
-                                    }
-                                    Some("string") => {
-                                        return Some(TypeFilter::Item(
-                                            path.0,
-                                            path.1,
-                                            TypeFilterItem::String,
-                                        ))
-                                    }
-                                    Some("boolean") => {
-                                        return Some(TypeFilter::Item(
-                                            path.0,
-                                            path.1,
-                                            TypeFilterItem::Bool,
-                                        ))
-                                    }
-                                    Some("nil") => {
-                                        return Some(TypeFilter::Item(
-                                            path.0,
-                                            path.1,
-                                            TypeFilterItem::Nil,
-                                        ))
-                                    }
-                                    Some("table") => {
-                                        return Some(TypeFilter::Item(
-                                            path.0,
-                                            path.1,
-                                            TypeFilterItem::Table,
-                                        ))
-                                    }
-                                    Some("function") => {
-                                        return Some(TypeFilter::Item(
-                                            path.0,
-                                            path.1,
-                                            TypeFilterItem::Function,
-                                        ))
-                                    }
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
-
-                    // Check: x == "foo"
-                    if let Some(path) = arguments[i1].indexing_path() {
-                        if let Some(s) = arguments[i2].as_string() {
-                            return Some(TypeFilter::Item(
-                                path.0,
-                                path.1,
-                                TypeFilterItem::Const(ConstData::String(s.to_owned())),
-                            ));
-                        }
-                    }
-                }
-            }
-            None
-        }
+        } => match function.as_string() {
+            Some("__eq") => process_eq(arguments),
+            Some("__ne") => process_eq(arguments).map(|value| TypeFilter::Not(Box::new(value))),
+            _ => None,
+        },
         ast::Expression::Index { .. } => None,
         ast::Expression::Fn(_) => None,
         ast::Expression::Table(_) => None,
@@ -202,6 +132,56 @@ pub fn expression_to_type_filter(expr: &ast::SpannedExpression) -> Option<TypeFi
             None // TODO
         }
     }
+}
+
+fn process_eq(args: &Vec<ast::Spanned<ast::Expression>>) -> Option<TypeFilter> {
+    for (i1, i2) in [(0, 1), (1, 0)] {
+        // Check: type(x) == "number"
+        if let ast::Expression::Call {
+            function,
+            arguments: args2,
+        } = &*args[i1]
+        {
+            // FIXME: We should check the type of the function
+            if function.as_variable() == Some(&"type") {
+                if let Some(path) = args2[0].indexing_path() {
+                    match args[i2].as_string() {
+                        Some("number") => {
+                            return Some(TypeFilter::Item(path.0, path.1, TypeFilterItem::Number))
+                        }
+                        Some("string") => {
+                            return Some(TypeFilter::Item(path.0, path.1, TypeFilterItem::String))
+                        }
+                        Some("boolean") => {
+                            return Some(TypeFilter::Item(path.0, path.1, TypeFilterItem::Bool))
+                        }
+                        Some("nil") => {
+                            return Some(TypeFilter::Item(path.0, path.1, TypeFilterItem::Nil))
+                        }
+                        Some("table") => {
+                            return Some(TypeFilter::Item(path.0, path.1, TypeFilterItem::Table))
+                        }
+                        Some("function") => {
+                            return Some(TypeFilter::Item(path.0, path.1, TypeFilterItem::Function))
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        // Check: x == "foo"
+        if let Some(path) = args[i1].indexing_path() {
+            if let Some(s) = args[i2].as_string() {
+                return Some(TypeFilter::Item(
+                    path.0,
+                    path.1,
+                    TypeFilterItem::Const(ConstData::String(s.to_owned())),
+                ));
+            }
+        }
+    }
+    None
 }
 
 pub fn type_filter_to_dnf(

@@ -203,10 +203,18 @@ impl<'a> Context<'a> {
                     } else {
                         for i in 0..vars.len() {
                             let var = &vars[i];
-                            let actual = self.check_expression(&exprs[i])?;
+                            // TODO: Can we assume that the number of variables and expressions are the same?
+                            let actual = if let Some(expr) = exprs.get(i) {
+                                self.check_expression(expr)?
+                                    .first()
+                                    .cloned()
+                                    .unwrap_or(Type::Nil)
+                            } else {
+                                Type::Nil
+                            };
                             if let Some(expect) = &var.1 {
                                 let expect = self.resolve_type(expect)?;
-                                type_match(&expect, &actual[0], &var.0.span)?;
+                                type_match(&expect, &actual, &var.0.span)?;
                                 self.insert(
                                     var.0.deref().clone(),
                                     expect.clone(),
@@ -215,7 +223,7 @@ impl<'a> Context<'a> {
                             } else {
                                 self.insert(
                                     var.0.deref().clone(),
-                                    actual[0].clone(),
+                                    actual,
                                     Some(var.0.span.clone()),
                                 );
                             }
@@ -467,8 +475,8 @@ impl<'a> Context<'a> {
                     &***function
                 {
                     match f.as_str() {
-                        "__eq" => Type::Function(vec![Type::Any, Type::Any], vec![Type::Bool]),
-                        "__lt" | "__le" => {
+                        "__eq" | "__ne" => Type::Function(vec![Type::Any, Type::Any], vec![Type::Bool]),
+                        "__lt" | "__le" | "__gt" | "__ge" => {
                             Type::Function(vec![Type::Number, Type::Number], vec![Type::Bool])
                         }
                         "__add" | "__sub" | "__mul" | "__div" | "__idiv" | "__mod" | "__pow" => {

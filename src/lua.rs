@@ -198,8 +198,11 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
                         return Ok(());
                     }
                     "__eq" => Some(("==", true)),
+                    "__ne" => Some(("~=", true)),
                     "__lt" => Some(("<", true)),
                     "__le" => Some(("<=", true)),
+                    "__gt" => Some((">", true)),
+                    "__ge" => Some((">=", true)),
                     "__add" => Some(("+", true)),
                     "__sub" => Some(("-", true)),
                     "__mul" => Some(("*", true)),
@@ -346,8 +349,11 @@ impl Expression {
                 if let Expression::Literal(Literal::String(op)) = &***function {
                     match op.as_str() {
                         "__eq" => 3,
+                        "__ne" => 3,
                         "__lt" => 3,
                         "__le" => 3,
+                        "__gt" => 3,
+                        "__ge" => 3,
                         "__add" => 5,
                         "__sub" => 5,
                         "__mul" => 6,
