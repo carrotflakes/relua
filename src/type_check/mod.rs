@@ -1,5 +1,6 @@
 mod type_filter;
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -8,12 +9,17 @@ use crate::ast;
 use crate::r#type::{ConstData, Type, TypeTable};
 
 thread_local! {
-    static SOURCE: std::cell::RefCell<*const str> = std::cell::RefCell::new("");
     static INFER_RESULT: std::cell::RefCell<Option<Vec<(ast::Span, Type)>>> = std::cell::RefCell::new(None);
 }
 
+#[derive(Debug, Clone)]
+pub struct Error {
+    pub message: String,
+    pub location: ast::Span,
+}
+
 pub struct Context<'a> {
-    parent: Option<&'a Context<'a>>,
+    parent: Result<&'a Context<'a>, RefCell<Vec<Error>>>,
     symbol_table: HashMap<String, Arc<Type>>,
     symbol_type_guarded: HashMap<*const Type, Type>,
     type_table: HashMap<String, Type>,
@@ -27,7 +33,7 @@ enum ReturnType {
 impl<'a> Context<'a> {
     pub fn from_symbol_table(symbol_table: HashMap<String, Type>) -> Self {
         Self {
-            parent: None,
+            parent: Err(RefCell::new(vec![])),
             symbol_table: symbol_table
                 .into_iter()
                 .map(|(name, type_)| (name.clone(), Arc::new(type_)))
@@ -39,7 +45,7 @@ impl<'a> Context<'a> {
 
     fn child(&'a self) -> Self {
         Self {
-            parent: Some(self),
+            parent: Ok(self),
             symbol_table: HashMap::new(),
             symbol_type_guarded: HashMap::new(),
             type_table: HashMap::new(),
@@ -60,9 +66,12 @@ impl<'a> Context<'a> {
     }
 
     fn get_symbol_variable_type(&self, name: &str) -> Option<&Arc<Type>> {
-        self.symbol_table
-            .get(name)
-            .or_else(|| self.parent.and_then(|p| p.get_symbol_variable_type(name)))
+        self.symbol_table.get(name).or_else(|| {
+            self.parent
+                .as_ref()
+                .ok()
+                .and_then(|p| p.get_symbol_variable_type(name))
+        })
     }
 
     fn get_symbol_type(&self, name: &str) -> Option<&Type> {
@@ -72,77 +81,89 @@ impl<'a> Context<'a> {
             if let Some(t) = c.symbol_type_guarded.get(&Arc::as_ptr(&at)) {
                 return Some(t);
             }
-            ctx = c.parent;
+            ctx = c.parent.clone().ok();
         }
         Some(&**at)
     }
 
-    fn resolve_type(&self, type_: &Type) -> Result<Type, String> {
-        type_.resolve(&|name| {
+    fn resolve_type(&self, type_: &Type) -> Type {
+        match type_.resolve(&|name| {
             let mut ctx = Some(self);
             while let Some(c) = ctx {
                 if let Some(t) = c.type_table.get(name) {
                     return Some(t.clone());
                 }
-                ctx = c.parent;
+                ctx = c.parent.clone().ok();
             }
             None
-        })
+        }) {
+            Ok(t) => t,
+            Err(e) => {
+                self.add_error(Error {
+                    message: e,
+                    location: ast::Span::default(), // FIXME
+                });
+                Type::Error
+            }
+        }
     }
 
-    fn resolve_types<'b>(&self, iter: impl Iterator<Item = &'b Type>) -> Result<Vec<Type>, String> {
+    fn resolve_types<'b>(&self, iter: impl Iterator<Item = &'b Type>) -> Vec<Type> {
         let mut types = vec![];
         for t in iter {
-            types.push(self.resolve_type(t)?);
+            types.push(self.resolve_type(t));
         }
-        Ok(types)
+        types
     }
 
-    pub fn check_program(
-        &self,
-        stmts: &[ast::SpannedStatement],
-        source: &str,
-    ) -> Result<Vec<Type>, String> {
-        SOURCE.with(|s| {
-            *s.borrow_mut() = source;
-        });
+    fn add_error(&self, err: Error) {
+        match self.parent {
+            Ok(parent) => {
+                parent.add_error(err);
+            }
+            Err(ref errors) => {
+                errors.borrow_mut().push(err);
+            }
+        }
+    }
 
+    pub fn check_program(self, stmts: &[ast::SpannedStatement]) -> Result<Vec<Type>, Vec<Error>> {
         let mut return_types = ReturnType::Infer(vec![]);
 
-        self.child().check_statements(stmts, &mut return_types)?;
+        let _ = self.child().check_statements(stmts, &mut return_types);
 
-        SOURCE.with(|s| {
-            *s.borrow_mut() = "";
-        });
-
+        if let Err(e) = self.parent {
+            if !e.borrow().is_empty() {
+                return Err(e.into_inner());
+            }
+        }
         Ok(return_types.into_types())
     }
 
     pub fn type_inference(
-        &self,
+        self,
         stmts: &[ast::SpannedStatement],
-        source: &str,
-    ) -> Result<Vec<(ast::Span, Type)>, String> {
+    ) -> (Vec<(ast::Span, Type)>, Vec<Error>) {
         INFER_RESULT.with(|r| {
             *r.borrow_mut() = Some(vec![]);
         });
 
-        self.check_program(stmts, source)?;
+        let res = self.check_program(stmts);
 
-        let res = INFER_RESULT.with(|r| r.borrow_mut().take().unwrap());
+        let types = INFER_RESULT.with(|r| r.borrow_mut().take().unwrap());
 
-        Ok(res)
+        (types, res.err().unwrap_or_default())
     }
 
     fn check_statements(
         &mut self,
         stmts: &[ast::SpannedStatement],
         return_type: &mut ReturnType,
-    ) -> Result<(), String> {
+    ) -> Result<(), ()> {
         for stmt in stmts {
             match &**stmt {
                 ast::Statement::Expression(expression) => {
-                    self.check_expression(expression)?;
+                    self.check_expression(expression);
                 }
                 ast::Statement::Fn { name, function } => {
                     let mut ctx1 = self.child();
@@ -150,7 +171,7 @@ impl<'a> Context<'a> {
                         ctx1.type_table.insert(p.clone(), Type::Variable(p.clone()));
                     }
 
-                    let params = ctx1.resolve_types(function.parameters.iter().map(|(_, t)| t))?;
+                    let params = ctx1.resolve_types(function.parameters.iter().map(|(_, t)| t));
                     let wrap_generics: &dyn Fn(Type) -> Type = if function.type_params.is_empty() {
                         &|t| t
                     } else {
@@ -163,7 +184,7 @@ impl<'a> Context<'a> {
                         wrap_generics(Type::Function(
                             params.clone(),
                             if let Some(t) = &function.return_types {
-                                ctx1.resolve_types(t.iter())?
+                                ctx1.resolve_types(t.iter())
                             } else {
                                 vec![]
                             }, // unknown?
@@ -171,22 +192,25 @@ impl<'a> Context<'a> {
                         None,
                     );
 
-                    let ret_types = ctx1.check_function(function)?;
-                    self.insert(
-                        name.deref().clone(),
-                        wrap_generics(Type::Function(params, ret_types.clone())),
-                        Some(name.span.clone()),
-                    );
+                    if let Ok(ret_types) = ctx1.check_function(function) {
+                        self.insert(
+                            name.deref().clone(),
+                            wrap_generics(Type::Function(params, ret_types.clone())),
+                            Some(name.span.clone()),
+                        );
+                    } else {
+                        self.insert(name.deref().clone(), Type::Error, Some(name.span.clone()));
+                    }
                 }
                 ast::Statement::Let(vars, exprs) => {
                     if exprs.len() == 1 {
-                        let actual = self.check_expression(&exprs[0])?;
+                        let actual = self.check_expression(&exprs[0]);
                         for i in 0..vars.len() {
                             let var = &vars[i];
                             let actual = actual.get(i).unwrap_or(&Type::Nil).clone();
                             if let Some(expect) = &var.1 {
-                                let expect = self.resolve_type(expect)?;
-                                type_match(&expect, &actual, &var.0.span)?;
+                                let expect = self.resolve_type(expect);
+                                self.type_match(&expect, &actual, &var.0.span);
                                 self.insert(
                                     var.0.deref().clone(),
                                     expect.clone(),
@@ -205,7 +229,7 @@ impl<'a> Context<'a> {
                             let var = &vars[i];
                             // TODO: Can we assume that the number of variables and expressions are the same?
                             let actual = if let Some(expr) = exprs.get(i) {
-                                self.check_expression(expr)?
+                                self.check_expression(expr)
                                     .first()
                                     .cloned()
                                     .unwrap_or(Type::Nil)
@@ -213,8 +237,8 @@ impl<'a> Context<'a> {
                                 Type::Nil
                             };
                             if let Some(expect) = &var.1 {
-                                let expect = self.resolve_type(expect)?;
-                                type_match(&expect, &actual, &var.0.span)?;
+                                let expect = self.resolve_type(expect);
+                                self.type_match(&expect, &actual, &var.0.span);
                                 self.insert(
                                     var.0.deref().clone(),
                                     expect.clone(),
@@ -234,37 +258,47 @@ impl<'a> Context<'a> {
                     let var_types = vars
                         .iter()
                         .map(|var| match var {
-                            ast::LValue::Variable(name) => self
-                                .get_symbol_variable_type(name)
-                                .ok_or_else(|| format!("Variable not found: {}", &**name))
-                                .map_err(append_loc(&stmt.span))
-                                .map(|t| (**t).clone()),
+                            ast::LValue::Variable(name) => {
+                                if let Some(t) = self.get_symbol_variable_type(name) {
+                                    (**t).clone()
+                                } else {
+                                    self.add_error(Error {
+                                        message: format!("Variable not found: {}", name),
+                                        location: stmt.span.clone(),
+                                    });
+                                    Type::Error
+                                }
+                            }
                             ast::LValue::Index(table, index) => {
-                                let table_type = self.check_expression(table)?[0].clone();
+                                let table_type = self.check_expression(table)[0].clone();
                                 match table_type {
                                     Type::Any => {
-                                        self.check_expression(index)?;
-                                        Ok(Type::Any)
+                                        self.check_expression(index);
+                                        Type::Any
                                     }
                                     Type::Table(table_type) => {
-                                        let index_type = self.check_expression(index)?[0].clone();
-                                        check_table(&table_type, &index_type)
-                                            .map_err(append_loc(&stmt.span))
+                                        let index_type = self.check_expression(index)[0].clone();
+                                        self.check_table(&table_type, &index_type, &stmt.span)
                                     }
-                                    _ => Err(format!("Not a table: {}", table_type))
-                                        .map_err(append_loc(&stmt.span)),
+                                    _ => {
+                                        self.add_error(Error {
+                                            message: format!("Not a table: {}", table_type),
+                                            location: stmt.span.clone(),
+                                        });
+                                        Type::Error
+                                    }
                                 }
                             }
                         })
-                        .collect::<Result<Vec<_>, _>>()?;
+                        .collect::<Vec<_>>();
 
                     if exprs.len() == 1 {
                         // let x, y = f()
-                        let actual = self.check_expression(&exprs[0])?;
+                        let actual = self.check_expression(&exprs[0]);
                         for i in 0..var_types.len() {
-                            let expect = self.resolve_type(&var_types[i])?;
+                            let expect = self.resolve_type(&var_types[i]);
                             let actual = actual.get(i).unwrap_or(&Type::Nil);
-                            type_match(&expect, actual, &stmt.span)?;
+                            self.type_match(&expect, actual, &stmt.span);
                             match &vars[i] {
                                 ast::LValue::Variable(v) => {
                                     let v = self.get_symbol_variable_type(v).unwrap();
@@ -277,12 +311,12 @@ impl<'a> Context<'a> {
                         // let x, y = 1, 2
                         for i in 0..var_types.len().max(exprs.len()) {
                             let actual = if i < exprs.len() {
-                                self.check_expression(&exprs[i])?[0].clone()
+                                self.check_expression(&exprs[i])[0].clone()
                             } else {
                                 Type::Nil
                             };
-                            let expect = self.resolve_type(&var_types[i])?;
-                            type_match(&expect, &actual, &stmt.span)?;
+                            let expect = self.resolve_type(&var_types[i]);
+                            self.type_match(&expect, &actual, &stmt.span);
                             match &vars[i] {
                                 ast::LValue::Variable(v) => {
                                     let v = self.get_symbol_variable_type(v).unwrap();
@@ -298,7 +332,7 @@ impl<'a> Context<'a> {
                     then,
                     else_,
                 } => {
-                    self.check_expression(condition)?;
+                    self.check_expression(condition);
                     let (mut ctx1, mut ctx2) = self.conditioned(condition);
                     ctx1.check_statements(then, return_type)?;
                     ctx2.check_statements(else_, return_type)?;
@@ -334,7 +368,7 @@ impl<'a> Context<'a> {
                     self.symbol_type_guarded = new_guard;
                 }
                 ast::Statement::While { condition, body } => {
-                    self.check_expression(condition)?;
+                    self.check_expression(condition);
                     // TODO: type guard
                     self.child().check_statements(body, return_type)?;
                 }
@@ -345,13 +379,13 @@ impl<'a> Context<'a> {
                     step,
                     body,
                 } => {
-                    let start_type = self.check_expression(start)?[0].clone();
-                    type_match(&Type::Number, &start_type, &stmt.span)?;
-                    let end_type = self.check_expression(end)?[0].clone();
-                    type_match(&Type::Number, &end_type, &stmt.span)?;
+                    let start_type = self.check_expression(start)[0].clone();
+                    self.type_match(&Type::Number, &start_type, &stmt.span);
+                    let end_type = self.check_expression(end)[0].clone();
+                    self.type_match(&Type::Number, &end_type, &stmt.span);
                     if let Some(step) = step {
-                        let step_type = self.check_expression(step)?[0].clone();
-                        type_match(&Type::Number, &step_type, &stmt.span)?;
+                        let step_type = self.check_expression(step)[0].clone();
+                        self.type_match(&Type::Number, &step_type, &stmt.span);
                     }
                     let mut ctx = self.child();
                     ctx.insert(
@@ -368,7 +402,7 @@ impl<'a> Context<'a> {
                 } => {
                     // TODO: type check
                     for expr in exprs {
-                        self.check_expression(expr)?;
+                        self.check_expression(expr);
                     }
                     let mut ctx = self.child();
                     for (name, type_) in variables {
@@ -383,15 +417,15 @@ impl<'a> Context<'a> {
                 }
                 ast::Statement::Return(exprs) => {
                     if exprs.len() == 1 {
-                        let actual = self.check_expression(&exprs[0])?;
+                        let actual = self.check_expression(&exprs[0]);
                         match return_type {
                             ReturnType::Fixed(expect) => {
                                 for i in 0..expect.len() {
-                                    type_match(
+                                    self.type_match(
                                         &expect[i],
                                         actual.get(i).unwrap_or(&Type::Nil),
                                         &stmt.span,
-                                    )?;
+                                    );
                                 }
                             }
                             ReturnType::Infer(typess) => {
@@ -401,17 +435,17 @@ impl<'a> Context<'a> {
                     } else {
                         let mut actuals = vec![];
                         for expr in exprs {
-                            let actual = self.check_expression(expr)?;
+                            let actual = self.check_expression(expr);
                             actuals.push(actual[0].clone());
                         }
                         match return_type {
                             ReturnType::Fixed(expect) => {
                                 for i in 0..expect.len() {
-                                    type_match(
+                                    self.type_match(
                                         &expect[i],
                                         actuals.get(i).unwrap_or(&Type::Nil),
                                         &stmt.span,
-                                    )?;
+                                    );
                                 }
                             }
                             ReturnType::Infer(typess) => {
@@ -429,15 +463,15 @@ impl<'a> Context<'a> {
         Ok(())
     }
 
-    fn check_function(&self, function: &ast::Function) -> Result<Vec<Type>, String> {
+    fn check_function(&self, function: &ast::Function) -> Result<Vec<Type>, ()> {
         let mut ctx = self.child();
 
         for (name, type_) in &function.parameters {
-            ctx.insert((**name).clone(), self.resolve_type(type_)?, None);
+            ctx.insert((**name).clone(), self.resolve_type(type_), None);
         }
 
         let mut ret_types = match &function.return_types {
-            Some(t) => ReturnType::Fixed(self.resolve_types(t.iter())?),
+            Some(t) => ReturnType::Fixed(self.resolve_types(t.iter())),
             None => ReturnType::Infer(vec![]),
         };
 
@@ -446,8 +480,8 @@ impl<'a> Context<'a> {
         Ok(ret_types.into_types())
     }
 
-    fn check_expression(&self, expr: &ast::SpannedExpression) -> Result<Vec<Type>, String> {
-        Ok(match &**expr {
+    fn check_expression(&mut self, expr: &ast::SpannedExpression) -> Vec<Type> {
+        match &**expr {
             ast::Expression::Literal(literal) => {
                 let val = match literal {
                     ast::Literal::Number(n) => ConstData::try_from_f64(*n)
@@ -460,12 +494,15 @@ impl<'a> Context<'a> {
             }
             ast::Expression::Nil => vec![Type::Nil],
             ast::Expression::Variable(name) => {
-                let val = self
-                    .get_symbol_type(name)
-                    .ok_or_else(|| format!("Variable not found: {}", &**name))
-                    .map_err(append_loc(&expr.span))?
-                    .clone();
-                vec![val]
+                if let Some(t) = self.get_symbol_type(name) {
+                    vec![t.clone()]
+                } else {
+                    self.add_error(Error {
+                        message: format!("Variable not found: {}", name),
+                        location: expr.span.clone(),
+                    });
+                    vec![Type::Error]
+                }
             }
             ast::Expression::Call {
                 function,
@@ -475,7 +512,9 @@ impl<'a> Context<'a> {
                     &***function
                 {
                     match f.as_str() {
-                        "__eq" | "__ne" => Type::Function(vec![Type::Any, Type::Any], vec![Type::Bool]),
+                        "__eq" | "__ne" => {
+                            Type::Function(vec![Type::Any, Type::Any], vec![Type::Bool])
+                        }
                         "__lt" | "__le" | "__gt" | "__ge" => {
                             Type::Function(vec![Type::Number, Type::Number], vec![Type::Bool])
                         }
@@ -490,86 +529,108 @@ impl<'a> Context<'a> {
                             ])],
                             vec![Type::Number],
                         ),
-                        _ => self.check_expression(function)?[0].clone(),
+                        _ => self.check_expression(function)[0].clone(), // possiblly out of range
                     }
                 } else {
-                    self.check_expression(function)?[0].clone()
+                    self.check_expression(function)[0].clone()
                 };
 
                 if let Type::Any = func_type {
                     for arg in arguments {
-                        self.check_expression(arg)?;
+                        self.check_expression(arg);
                     }
-                    return Ok(vec![Type::Any]); // TODO
+                    return vec![Type::Any]; // TODO
+                }
+
+                if let Type::Error = func_type {
+                    for arg in arguments {
+                        self.check_expression(arg);
+                    }
+                    return vec![Type::Error];
                 }
 
                 if let Type::Function(params, return_types) = func_type {
                     if arguments.len() == 1 {
-                        let actual = self.check_expression(&arguments[0])?;
+                        let actual = self.check_expression(&arguments[0]);
                         for i in 0..params.len() {
-                            let param = self.resolve_type(&params[i])?;
-                            type_match(&param, actual.get(i).unwrap_or(&Type::Nil), &expr.span)?;
+                            let param = self.resolve_type(&params[i]);
+                            self.type_match(
+                                &param,
+                                actual.get(i).unwrap_or(&Type::Nil),
+                                &expr.span,
+                            );
                         }
                     } else {
                         for i in 0..params.len() {
-                            let param = self.resolve_type(&params[i])?;
+                            let param = self.resolve_type(&params[i]);
                             let actual = if let Some(arg) = arguments.get(i) {
-                                self.check_expression(arg)?[0].clone()
+                                self.check_expression(arg)[0].clone()
                             } else {
                                 Type::Nil
                             };
-                            type_match(&param, &actual, &expr.span)?;
+                            self.type_match(&param, &actual, &expr.span);
                         }
                     }
                     return_types
                 } else {
-                    return Err(format!("Not a function: {}", func_type))
-                        .map_err(append_loc(&expr.span));
+                    self.add_error(Error {
+                        message: format!("Not a function: {}", func_type),
+                        location: expr.span.clone(),
+                    });
+                    vec![Type::Error]
                 }
             }
             ast::Expression::Index { table, index } => {
-                let table_types = self.check_expression(table)?;
+                let table_types = self.check_expression(table);
                 let table_type = &table_types[0];
                 match table_type {
                     Type::Any => {
-                        self.check_expression(index)?;
-                        return Ok(vec![Type::Any]);
+                        self.check_expression(index);
+                        return vec![Type::Any];
                     }
                     Type::Table(table_type) => {
-                        let index_types = self.check_expression(index)?;
+                        let index_types = self.check_expression(index);
                         let index_type = &index_types[0];
-                        vec![check_table(&table_type, &index_type)
-                            .map_err(append_loc(&expr.span))?]
+                        vec![self.check_table(&table_type, &index_type, &expr.span)]
                     }
                     Type::Union(ts) => {
                         let ts = ts
                             .iter()
                             .map(|t| match t {
                                 Type::Any => {
-                                    self.check_expression(index)?;
-                                    Ok(Type::Any)
+                                    self.check_expression(index);
+                                    Type::Any
                                 }
                                 Type::Table(table_type) => {
-                                    let index_types = self.check_expression(index)?;
+                                    let index_types = self.check_expression(index);
                                     let index_type = &index_types[0];
-                                    Ok(check_table(&table_type, &index_type)
-                                        .map_err(append_loc(&expr.span))?)
+                                    self.check_table(&table_type, &index_type, &expr.span)
                                 }
-                                _ => Err(format!("Not a table: {}", table_type))
-                                    .map_err(append_loc(&expr.span)),
+                                _ => {
+                                    self.add_error(Error {
+                                        message: format!("Not a table: {}", table_type),
+                                        location: expr.span.clone(),
+                                    });
+                                    Type::Error
+                                }
                             })
-                            .collect::<Result<Vec<_>, _>>()?;
+                            .collect::<Vec<_>>();
                         vec![Type::Union(ts).normalize()]
                     }
                     _ => {
-                        return Err(format!("Not a table: {}", table_type))
-                            .map_err(append_loc(&expr.span))
+                        self.add_error(Error {
+                            message: format!("Not a table: {}", table_type),
+                            location: expr.span.clone(),
+                        });
+                        vec![Type::Error]
                     }
                 }
             }
             ast::Expression::Fn(function) => {
                 if function.type_params.is_empty() {
-                    let ret_types = self.check_function(function)?;
+                    let ret_types = self
+                        .check_function(function)
+                        .unwrap_or_else(|_| vec![Type::Error]);
                     vec![Type::Function(
                         function.parameters.iter().map(|(_, t)| t.clone()).collect(),
                         ret_types,
@@ -579,7 +640,9 @@ impl<'a> Context<'a> {
                     for p in &function.type_params {
                         ctx.type_table.insert(p.clone(), Type::Variable(p.clone()));
                     }
-                    let ret_types = ctx.check_function(function)?;
+                    let ret_types = ctx
+                        .check_function(function)
+                        .unwrap_or_else(|_| vec![Type::Error]);
                     vec![Type::Generic(
                         function.type_params.clone(),
                         Box::new(Type::Function(
@@ -598,14 +661,14 @@ impl<'a> Context<'a> {
                 let mut functions = vec![];
 
                 for (key, value) in vec {
-                    let value_types = self.check_expression(value)?;
+                    let value_types = self.check_expression(value);
                     let value_type = value_types[0].clone();
                     match key {
                         ast::TableKey::Literal(literal) => {
                             consts.push((literal.to_const_data(), value_type))
                         }
                         ast::TableKey::Expression(e) => {
-                            let key_types = self.check_expression(e)?;
+                            let key_types = self.check_expression(e);
                             let key_type = key_types[0].clone();
                             match key_type {
                                 Type::Number => number.push(value_type),
@@ -615,8 +678,10 @@ impl<'a> Context<'a> {
                                 Type::Table(_) => table.push(value_type),
                                 Type::Function(_, _) => functions.push(value_type),
                                 t => {
-                                    return Err(format!("Invalid table key type: {}", t))
-                                        .map_err(append_loc(&expr.span));
+                                    self.add_error(Error {
+                                        message: format!("Invalid table key type: {}", t),
+                                        location: e.span.clone(),
+                                    });
                                 }
                             }
                         }
@@ -633,44 +698,57 @@ impl<'a> Context<'a> {
                 })]
             }
             ast::Expression::LogicalAnd(a, b) => {
-                let a = self.check_expression(a)?;
-                let b = self.check_expression(b)?;
+                let a = self.check_expression(a);
+                let b = self.check_expression(b);
                 vec![Type::from_types(vec![a[0].clone(), b[0].clone()]).unwrap()]
             }
             ast::Expression::LogicalOr(a, b) => {
-                let a = self.check_expression(a)?;
-                let b = self.check_expression(b)?;
+                let a = self.check_expression(a);
+                let b = self.check_expression(b);
                 vec![Type::from_types(vec![a[0].clone(), b[0].clone()]).unwrap()]
             }
             ast::Expression::LogicalNot(e) => {
-                self.check_expression(e)?;
+                self.check_expression(e);
                 vec![Type::Bool]
             }
             ast::Expression::TypeResolve(e, type_args) => {
-                let ts = self.check_expression(e)?;
-                let type_args = self.resolve_types(type_args.iter())?;
+                let ts = self.check_expression(e);
+                let type_args = self.resolve_types(type_args.iter());
                 if ts.len() != 1 {
-                    return Err(format!("Type resolve expects one argument",))
-                        .map_err(append_loc(&expr.span));
+                    // ?
+                    self.add_error(Error {
+                        message: format!("Type resolve expects one argument, got {}", ts.len()),
+                        location: expr.span.clone(),
+                    });
+                    return vec![Type::Error];
                 }
                 match &ts[0] {
                     Type::Generic(params, t) => {
                         if params.len() != type_args.len() {
-                            return Err(format!("Type resolve expects same number of type arguments as generic parameters")).map_err(append_loc(&expr.span));
+                            self.add_error(Error {
+                                message: format!(
+                                    "Type resolve expects same number of type arguments as generic parameters"
+                                ),
+                                location: expr.span.clone(),
+                            });
+                            return vec![Type::Error];
                         }
                         let mut ctx = self.child();
                         for (param, arg) in params.iter().zip(type_args.iter()) {
                             ctx.type_table.insert(param.clone(), arg.clone());
                         }
-                        vec![ctx.resolve_type(t)?]
+                        vec![ctx.resolve_type(t)]
                     }
                     _ => {
-                        return Err(format!("Type resolve expects a generic type",))
-                            .map_err(append_loc(&expr.span));
+                        self.add_error(Error {
+                            message: format!("Type resolve expects a generic type"),
+                            location: expr.span.clone(),
+                        });
+                        vec![Type::Error]
                     }
                 }
             }
-        })
+        }
     }
 
     fn conditioned(&'a self, condition: &ast::SpannedExpression) -> (Self, Self) {
@@ -678,7 +756,7 @@ impl<'a> Context<'a> {
         if let Some(type_filter) = type_filter {
             let type_filter = type_filter::type_filter_to_dnf(&type_filter);
             let ctx1 = Context {
-                parent: Some(self),
+                parent: Ok(self),
                 symbol_table: HashMap::new(),
                 symbol_type_guarded: self
                     .symbol_table
@@ -697,7 +775,7 @@ impl<'a> Context<'a> {
                 type_table: HashMap::new(),
             };
             let ctx2 = Context {
-                parent: Some(self),
+                parent: Ok(self),
                 symbol_table: HashMap::new(),
                 symbol_type_guarded: self
                     .symbol_table
@@ -718,6 +796,31 @@ impl<'a> Context<'a> {
             (ctx1, ctx2)
         } else {
             (self.child(), self.child())
+        }
+    }
+
+    fn check_table(&mut self, table_type: &TypeTable, index_type: &Type, span: &ast::Span) -> Type {
+        check_table(table_type, index_type).unwrap_or_else(|e| {
+            self.add_error(Error {
+                message: e,
+                location: span.clone(),
+            });
+            Type::Error
+        })
+    }
+
+    fn type_match(&mut self, expect: &Type, actual: &Type, span: &ast::Span) -> bool {
+        if expect.is_error() || actual.is_error() {
+            return true;
+        }
+        if expect.include(actual) {
+            true
+        } else {
+            self.add_error(Error {
+                message: format!("Type mismatch, expected {}, got {}", expect, actual),
+                location: span.clone(),
+            });
+            false
         }
     }
 }
@@ -769,17 +872,6 @@ fn check_table(table_type: &TypeTable, index_type: &Type) -> Result<Type, String
     Err(format!("Invalid index type: {}", index_type))
 }
 
-fn type_match(expect: &Type, actual: &Type, span: &ast::Span) -> Result<(), String> {
-    if expect.include(actual) {
-        Ok(())
-    } else {
-        Err(append_loc(span)(format!(
-            "Type mismatch, expected {}, got {}",
-            expect, actual
-        )))
-    }
-}
-
 impl ReturnType {
     fn into_types(self) -> Vec<Type> {
         match self {
@@ -797,30 +889,4 @@ impl ReturnType {
             }
         }
     }
-}
-
-fn append_loc(span: &ast::Span) -> impl Fn(String) -> String {
-    let pos = span.start;
-    move |msg| {
-        let src = SOURCE.with(|s: &std::cell::RefCell<*const str>| unsafe { &**s.borrow() });
-        let loc = row_and_col(src, pos);
-        format!("{} at {:?}", msg, loc)
-    }
-}
-
-fn row_and_col(src: &str, pos: usize) -> (usize, usize) {
-    let mut row = 1;
-    let mut col = 1;
-    for (i, c) in src.char_indices() {
-        if i == pos {
-            break;
-        }
-        if c == '\n' {
-            row += 1;
-            col = 1;
-        } else {
-            col += 1;
-        }
-    }
-    (row, col)
 }

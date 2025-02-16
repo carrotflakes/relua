@@ -11,7 +11,9 @@ use std::collections::HashMap;
 pub fn compile(src: &str) -> Result<String, String> {
     let prog = front::parser::program(src).map_err(|e| e.to_string())?;
 
-    type_check::Context::from_symbol_table(default_bindings()).check_program(&prog, src)?;
+    type_check::Context::from_symbol_table(default_bindings())
+        .check_program(&prog)
+        .map_err(|es| format_errors(es, src))?;
 
     let mut res = String::new();
     lua::write_lua(&mut res, &prog).map_err(|e| e.to_string())?;
@@ -24,11 +26,38 @@ pub fn compile_with_bindings(
 ) -> Result<String, String> {
     let prog = front::parser::program(src).map_err(|e| e.to_string())?;
 
-    type_check::Context::from_symbol_table(bindings).check_program(&prog, src)?;
+    type_check::Context::from_symbol_table(bindings)
+        .check_program(&prog)
+        .map_err(|es| format_errors(es, src))?;
 
     let mut res = String::new();
     lua::write_lua(&mut res, &prog).map_err(|e| e.to_string())?;
     Ok(res)
+}
+
+pub fn format_errors(errors: Vec<type_check::Error>, src: &str) -> String {
+    errors
+        .into_iter()
+        .map(|e| format!("{} at {:?}", e.message, row_and_col(src, e.location.start)))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn row_and_col(src: &str, pos: usize) -> (usize, usize) {
+    let mut row = 1;
+    let mut col = 1;
+    for (i, c) in src.char_indices() {
+        if i == pos {
+            break;
+        }
+        if c == '\n' {
+            row += 1;
+            col = 1;
+        } else {
+            col += 1;
+        }
+    }
+    (row, col)
 }
 
 pub fn default_bindings() -> HashMap<String, r#type::Type> {

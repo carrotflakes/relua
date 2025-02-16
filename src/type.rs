@@ -16,6 +16,8 @@ pub enum Type {
 
     Variable(String),
     Generic(Vec<String>, Box<Type>),
+
+    Error,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -44,15 +46,17 @@ impl Type {
     }
 
     pub fn is_never(&self) -> bool {
-        if let Type::Union(vec) = self {
-            vec.is_empty()
-        } else {
-            false
-        }
+        matches!(self, Type::Union(vec) if vec.is_empty())
+    }
+
+    pub fn is_error(&self) -> bool {
+        matches!(self, Type::Error)
     }
 
     pub fn include(&self, other: &Type) -> bool {
         match (self, other) {
+            (Type::Error, _) | (_, Type::Error) => panic!("Error type should not be compared"),
+
             (l @ Type::Union(_), Type::Union(r)) => r.iter().all(|r| l.include(r)),
             (Type::Union(l), r) => l.iter().any(|t| t.include(r)),
 
@@ -92,6 +96,8 @@ impl Type {
 
     pub fn intersect(&self, other: &Type) -> Type {
         match (self, other) {
+            (Type::Error, _) | (_, Type::Error) => panic!("Error type should not be compared"),
+
             (Type::Union(l), Type::Union(r)) => {
                 let mut types = vec![];
                 for l in l {
@@ -142,6 +148,7 @@ impl Type {
     }
 
     pub fn normalize(&self) -> Type {
+        // TODO: Handle Error
         match self {
             Type::Union(types) => {
                 let mut types = types
@@ -305,6 +312,7 @@ impl Type {
             Type::Const(_) => Type::never(),
             Type::Variable(_) => todo!(),
             Type::Generic(vec, _) => todo!(),
+            Type::Error => Type::Error,
         }
     }
 }
@@ -365,6 +373,7 @@ impl std::fmt::Display for Type {
                 }
                 write!(f, "> {}", t)
             }
+            Type::Error => write!(f, "error"),
         }
     }
 }

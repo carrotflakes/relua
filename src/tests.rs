@@ -103,7 +103,9 @@ f("1")
     ];
     for src in &srcs {
         let prog = parser::program(src).unwrap();
-        let res = Context::from_symbol_table(default_bindings()).check_program(&prog, src);
+        let res = Context::from_symbol_table(default_bindings())
+            .check_program(&prog)
+            .map_err(|es| crate::format_errors(es, src));
         gilder::assert_golden!(format!("{:?}", res));
     }
     for src in &srcs {
@@ -138,7 +140,9 @@ f("1")
     ];
     for src in &srcs {
         let prog = parser::program(src).unwrap();
-        let res = Context::from_symbol_table(default_bindings()).check_program(&prog, src);
+        let res = Context::from_symbol_table(default_bindings())
+            .check_program(&prog)
+            .map_err(|es| crate::format_errors(es, src));
         gilder::assert_golden!(format!("{:?}", res));
     }
 }
