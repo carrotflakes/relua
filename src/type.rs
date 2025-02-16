@@ -310,8 +310,8 @@ impl Type {
             }
             Type::Function(_, _) => Type::never(),
             Type::Const(_) => Type::never(),
-            Type::Variable(_) => todo!(),
-            Type::Generic(vec, _) => todo!(),
+            Type::Variable(_) => panic!("Variable type should be resolved: {}", self),
+            Type::Generic(_, _) => panic!("Generic type should be resolved: {}", self),
             Type::Error => Type::Error,
         }
     }
@@ -535,9 +535,12 @@ impl std::fmt::Display for TypeTable {
         } = self;
 
         write!(f, "{{")?;
-        for (i, (cd, t)) in consts.iter().enumerate() {
-            if i > 0 {
+        let mut comma = false;
+        for (cd, t) in consts.iter() {
+            if comma {
                 write!(f, ", ")?;
+            } else {
+                comma = true;
             }
             match cd {
                 ConstData::Number(n) => write!(f, "{}", n.0),
@@ -546,20 +549,21 @@ impl std::fmt::Display for TypeTable {
             }?;
             write!(f, ": {}", t)?;
         }
-        if let Some(t) = number {
-            write!(f, ", [num]: {}", t)?;
-        }
-        if let Some(t) = string {
-            write!(f, ", [str]: {}", t)?;
-        }
-        if let Some(t) = bool {
-            write!(f, ", [bool]: {}", t)?;
-        }
-        if let Some(t) = table {
-            write!(f, ", [table]: {}", t)?;
-        }
-        if let Some(t) = function {
-            write!(f, ", [fn]: {}", t)?;
+        for (name, t) in &[
+            ("num", number),
+            ("str", string),
+            ("bool", bool),
+            ("table", table),
+            ("fn", function),
+        ] {
+            if let Some(t) = t {
+                if comma {
+                    write!(f, ", ")?;
+                } else {
+                    comma = true;
+                }
+                write!(f, "[{}]: {}", name, t)?;
+            }
         }
         write!(f, "}}")
     }
