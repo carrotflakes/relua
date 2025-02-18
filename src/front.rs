@@ -1,8 +1,9 @@
 use crate::ast::*;
 use crate::r#type::{ConstData, Type, TypeTable};
 
-const FORBIDDEN_IDENTIFIERS: [&str; 11] = [
-    "fn", "let", "if", "else", "while", "for", "in", "return", "break", "true", "false",
+// NOTE: We cannot add "type" to the forbidden identifiers because it is a function in Lua.
+const FORBIDDEN_IDENTIFIERS: &[&str] = &[
+    "fn", "let", "if", "else", "while", "for", "in", "return", "break", "true", "false", "as",
 ];
 
 // https://docs.rs/peg/latest/peg/
@@ -107,6 +108,8 @@ peg::parser!(pub grammar parser() for str {
         a:(@) _ "/" _ b:@ { bin_op_expr("__div", a, b) }
         a:(@) _ idiv_op() _ b:@ { bin_op_expr("__idiv", a, b) }
         a:(@) _ "%" _ b:@ { bin_op_expr("__mod", a, b) }
+        --
+        a:(@) _ "as" _ t:type_() pe:position!() { spanned(a.span.start, pe, Expression::As(Box::new(a), t)) }
         --
         pb:position!() "-" _ e:@ { spanned(pb, e.span.end, function_expr("__neg", vec![e])) }
         pb:position!() "!" _ e:@ { spanned(pb, e.span.end, Expression::LogicalNot(Box::new(e))) }

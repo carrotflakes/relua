@@ -137,6 +137,7 @@ f("1")
         r#"let x: {type: "a", a: 1} | {type: "b", b: 2} = {type:"a", a: 1} if x.type == "a" {let y: num = x.b}"#,
         r#"let x: num | () = 1 x = 2 let y: num = x"#,
         r#"let x: num | () = 1 if !x {x=2} let y: num = x"#,
+        r#"let x: num = "1" as any as num"#,
     ];
     for src in &srcs {
         let prog = parser::program(src).unwrap();

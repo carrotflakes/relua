@@ -711,6 +711,12 @@ impl<'a> Context<'a> {
                 self.check_expression(e);
                 vec![Type::Bool]
             }
+            ast::Expression::As(e, t) => {
+                let actual = self.check_expression(e);
+                let expect = self.resolve_type(t);
+                self.type_match(&expect, &actual[0], &expr.span);
+                vec![expect]
+            }
             ast::Expression::TypeResolve(e, type_args) => {
                 let ts = self.check_expression(e);
                 let type_args = self.resolve_types(type_args.iter());

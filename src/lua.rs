@@ -300,6 +300,9 @@ fn expression(writer: &mut impl Write, expr: &ast::Expression) -> std::fmt::Resu
         ast::Expression::TypeResolve(e, _) => {
             expression(writer, e)?;
         }
+        Expression::As(e, _) => {
+            expression(writer, e)?;
+        }
         Expression::Nil => {
             writer.write_str("nil")?;
         }
@@ -373,10 +376,12 @@ impl Expression {
             Expression::Table(_) => 9,
             Expression::Index { .. } => 10, //?
             Expression::Fn(_) => 10,
-            Expression::TypeResolve(e, _) => e.precedence(),
             Expression::Variable(_) => 10,
             Expression::Literal(_) => 10,
             Expression::Nil => 10,
+
+            Expression::As(e, _) => e.precedence(),
+            Expression::TypeResolve(e, _) => e.precedence(),
         }
     }
 }

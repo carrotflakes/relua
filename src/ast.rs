@@ -82,6 +82,7 @@ pub enum Expression {
     LogicalAnd(Box<SpannedExpression>, Box<SpannedExpression>),
     LogicalOr(Box<SpannedExpression>, Box<SpannedExpression>),
     LogicalNot(Box<SpannedExpression>),
+    As(Box<SpannedExpression>, Type),
     TypeResolve(Box<SpannedExpression>, Vec<Type>),
 }
 

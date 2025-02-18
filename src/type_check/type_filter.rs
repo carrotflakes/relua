@@ -128,6 +128,7 @@ pub fn expression_to_type_filter(expr: &ast::SpannedExpression) -> Option<TypeFi
             vec![],
             TypeFilterItem::Truthy,
         )),
+        ast::Expression::As(e, _) => expression_to_type_filter(e),
         ast::Expression::TypeResolve(_, _) => {
             None // TODO
         }
