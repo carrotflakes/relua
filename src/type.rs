@@ -139,7 +139,17 @@ impl Type {
             (Type::Nil, _) => Type::never(),
             (Type::Table(l), Type::Table(r)) => Type::Table(l.intersect(r)),
             (Type::Table(_), _) => Type::never(),
-            (Type::Function(l_ps, l_ret), Type::Function(r_ps, r_ret)) => todo!(),
+            (Type::Function(l_ps, l_ret), Type::Function(r_ps, r_ret)) => Type::Function(
+                l_ps.iter()
+                    .zip(r_ps.iter())
+                    .map(|(l, r)| l.intersect(r))
+                    .collect(),
+                l_ret
+                    .iter()
+                    .zip(r_ret.iter())
+                    .map(|(l, r)| l.intersect(r))
+                    .collect(),
+            ),
             (Type::Function(_, _), _) => Type::never(),
             (Type::Variable(l), Type::Variable(r)) if l == r => self.clone(),
             (Type::Variable(_), _) => panic!("Variable type should be resolved: {}", self),
