@@ -263,8 +263,8 @@ impl<'a> Context<'a> {
                                     (**t).clone()
                                 } else {
                                     self.add_error(Error {
-                                        message: format!("Variable not found: {}", name),
-                                        location: stmt.span.clone(),
+                                        message: format!("Variable not found: {}", &**name),
+                                        location: name.span.clone(),
                                     });
                                     Type::Error
                                 }
@@ -283,7 +283,7 @@ impl<'a> Context<'a> {
                                     _ => {
                                         self.add_error(Error {
                                             message: format!("Not a table: {}", table_type),
-                                            location: stmt.span.clone(),
+                                            location: table.span.clone(),
                                         });
                                         Type::Error
                                     }

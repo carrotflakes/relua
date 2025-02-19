@@ -84,7 +84,7 @@ peg::parser!(pub grammar parser() for str {
         = t:expression() {?
             match t.node {
                 Expression::Index { table, index } => Ok(LValue::Index(table, index)),
-                Expression::Variable(i) => Ok(LValue::Variable(i)),
+                Expression::Variable(i) => Ok(LValue::Variable(spanned(t.span.start, t.span.end, i))),
                 _ => Err("expected index or variable expression"),
             }
         }

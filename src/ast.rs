@@ -22,13 +22,16 @@ impl<T> std::ops::Deref for Spanned<T> {
     }
 }
 
+type VariableIdent = Spanned<String>;
+type TypeIdent = String;
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Expression(SpannedExpression),
-    Let(Vec<(Spanned<String>, Option<Type>)>, Vec<SpannedExpression>),
+    Let(Vec<(VariableIdent, Option<Type>)>, Vec<SpannedExpression>),
     Fn {
         // This Spanned<String> is requested by the LSP protocol.
-        name: Spanned<String>,
+        name: VariableIdent,
         function: Function,
     },
     Assignment {
@@ -46,20 +49,20 @@ pub enum Statement {
     },
     ForNumeric {
         // This Spanned<String> is requested by the LSP protocol.
-        variable: Spanned<String>,
+        variable: VariableIdent,
         start: SpannedExpression,
         end: SpannedExpression,
         step: Option<SpannedExpression>,
         body: Vec<SpannedStatement>,
     },
     ForGeneric {
-        variables: Vec<(Spanned<String>, Option<Type>)>,
+        variables: Vec<(VariableIdent, Option<Type>)>,
         exprs: Vec<SpannedExpression>,
         body: Vec<SpannedStatement>,
     },
     Return(Vec<SpannedExpression>),
     Break,
-    TypeAlias(String, Type),
+    TypeAlias(TypeIdent, Type),
 }
 
 pub type SpannedStatement = Spanned<Statement>;
@@ -68,7 +71,7 @@ pub type SpannedStatement = Spanned<Statement>;
 pub enum Expression {
     Literal(Literal),
     Nil,
-    Variable(String),
+    Variable(String), // TypeIdent is not needed, because Expressions are always Spanned.
     Call {
         function: Box<SpannedExpression>,
         arguments: Vec<SpannedExpression>,
@@ -90,15 +93,15 @@ pub type SpannedExpression = Spanned<Expression>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
-    pub type_params: Vec<String>,
-    pub parameters: Vec<(Spanned<String>, Type)>,
+    pub type_params: Vec<TypeIdent>,
+    pub parameters: Vec<(VariableIdent, Type)>,
     pub return_types: Option<Vec<Type>>,
     pub body: Vec<SpannedStatement>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum LValue {
-    Variable(String),
+    Variable(VariableIdent),
     Index(Box<SpannedExpression>, Box<SpannedExpression>),
 }
 
