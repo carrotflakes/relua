@@ -2,7 +2,7 @@ use crate::r#type::{ConstData, Type};
 
 pub type Span = std::ops::Range<usize>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Spanned<T> {
     pub node: T,
     pub span: Span,
@@ -25,7 +25,7 @@ impl<T> std::ops::Deref for Spanned<T> {
 type VariableIdent = Spanned<String>;
 type TypeIdent = String;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Statement {
     Expression(SpannedExpression),
     Let(Vec<(VariableIdent, Option<Type>)>, Vec<SpannedExpression>),
@@ -67,7 +67,7 @@ pub enum Statement {
 
 pub type SpannedStatement = Spanned<Statement>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Expression {
     Literal(Literal),
     Nil,
@@ -91,7 +91,7 @@ pub enum Expression {
 
 pub type SpannedExpression = Spanned<Expression>;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Function {
     pub type_params: Vec<TypeIdent>,
     pub parameters: Vec<(VariableIdent, Type)>,
@@ -99,19 +99,19 @@ pub struct Function {
     pub body: Vec<SpannedStatement>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum LValue {
     Variable(VariableIdent),
     Index(Box<SpannedExpression>, Box<SpannedExpression>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum TableKey {
     Literal(Literal),
     Expression(SpannedExpression),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub enum Literal {
     Number(f64),
     String(String),
