@@ -1,5 +1,5 @@
 use crate::ast::*;
-use crate::r#type::{ConstData, Type, TypeTable};
+use crate::r#type::{ConstData, Type, TypeTable, Variable as TypeVariable};
 
 // NOTE: We cannot add "type" to the forbidden identifiers because it is a function in Lua.
 const FORBIDDEN_IDENTIFIERS: &[&str] = &[
@@ -78,7 +78,7 @@ peg::parser!(pub grammar parser() for str {
         { Statement::Fn {name, function: Function { type_params: tps, parameters: params, return_types: rt, body: stmts } } }
 
     rule type_alias() -> Statement
-        = "type" _ name:identifier() _ "=" _ t:type_() { Statement::TypeAlias(name, t) }
+        = "type" _ name:spanned_identifier() _ "=" _ t:type_() { Statement::TypeAlias(TypeVariable::from_spanned_str(name), t) }
 
     rule lval() -> LValue
         = t:expression() {?
@@ -185,7 +185,9 @@ peg::parser!(pub grammar parser() for str {
         t:type_table() { t }
         a:type_function() { a }
         a:type_atom() { a }
-        i:identifier() { Type::Variable(i) }
+        i:spanned_identifier() {
+            Type::Variable(TypeVariable::from_spanned_str(i))
+        }
     }
 
     rule spanned_stmt(f: rule<Statement>) -> SpannedStatement
@@ -238,8 +240,8 @@ peg::parser!(pub grammar parser() for str {
         / "never" { Type::never() }
         / l:literal() { Type::Const(l.to_const_data()) }
 
-    rule type_params() -> Vec<String>
-        = "<" _ ts:((_ t:identifier() _ { t }) ++ ",") ">" _ { ts }
+    rule type_params() -> Vec<TypeVariable>
+        = "<" _ ts:((_ t:spanned_identifier() _ { TypeVariable::from_spanned_str(t) }) ++ ",") ">" _ { ts }
         / { vec![] }
 
     rule type_args() -> Vec<Type>

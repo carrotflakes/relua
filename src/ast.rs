@@ -1,4 +1,4 @@
-use crate::r#type::{ConstData, Type};
+use crate::r#type::{ConstData, Type, Variable as TypeVariable};
 
 pub type Span = std::ops::Range<usize>;
 
@@ -23,7 +23,6 @@ impl<T> std::ops::Deref for Spanned<T> {
 }
 
 type VariableIdent = Spanned<String>;
-type TypeIdent = String;
 
 #[derive(Debug, Clone)]
 pub enum Statement {
@@ -62,7 +61,7 @@ pub enum Statement {
     },
     Return(Vec<SpannedExpression>),
     Break,
-    TypeAlias(TypeIdent, Type),
+    TypeAlias(TypeVariable, Type),
 }
 
 pub type SpannedStatement = Spanned<Statement>;
@@ -71,7 +70,7 @@ pub type SpannedStatement = Spanned<Statement>;
 pub enum Expression {
     Literal(Literal),
     Nil,
-    Variable(String), // TypeIdent is not needed, because Expressions are always Spanned.
+    Variable(String), // VariableIdent is not needed, because Expressions are always Spanned.
     Call {
         function: Box<SpannedExpression>,
         arguments: Vec<SpannedExpression>,
@@ -93,7 +92,7 @@ pub type SpannedExpression = Spanned<Expression>;
 
 #[derive(Debug, Clone)]
 pub struct Function {
-    pub type_params: Vec<TypeIdent>,
+    pub type_params: Vec<TypeVariable>,
     pub parameters: Vec<(VariableIdent, Type)>,
     pub return_types: Option<Vec<Type>>,
     pub body: Vec<SpannedStatement>,

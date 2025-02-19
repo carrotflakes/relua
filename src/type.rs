@@ -14,8 +14,8 @@ pub enum Type {
 
     Const(ConstData),
 
-    Variable(String),
-    Generic(Vec<String>, Box<Type>),
+    Variable(Variable),
+    Generic(Vec<Variable>, Box<Type>),
 
     Error,
 }
@@ -39,6 +39,13 @@ pub enum ConstData {
 
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct F64(f64);
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Variable {
+    name: String,
+    #[cfg(feature = "extra_span")]
+    span: crate::ast::Span,
+}
 
 impl Type {
     pub fn never() -> Self {
@@ -204,9 +211,11 @@ impl Type {
     }
 
     /// Resolve all variables in the type
-    pub fn resolve(&self, map: &dyn Fn(&String) -> Option<Type>) -> Result<Type, String> {
+    pub fn resolve(&self, map: &dyn Fn(&str) -> Option<Type>) -> Result<Type, String> {
         match self {
-            Type::Variable(name) => map(name).ok_or_else(|| format!("Variable {} not found", name)),
+            Type::Variable(var) => {
+                map(var.name()).ok_or_else(|| format!("Variable {} not found", var.name()))
+            }
             Type::Union(types) => {
                 let mut types = types
                     .iter()
@@ -260,9 +269,9 @@ impl Type {
                 r.iter().map(|t| t.resolve(map)).collect::<Result<_, _>>()?,
             )),
             Type::Generic(params, t) => {
-                let map = |name: &String| {
-                    if params.contains(name) {
-                        Some(Type::Variable(name.clone()))
+                let map = |name: &str| {
+                    if let Some(t) = params.iter().find(|p| p.name() == name) {
+                        Some(Type::Variable(t.clone()))
                     } else {
                         map(name)
                     }
@@ -372,14 +381,14 @@ impl std::fmt::Display for Type {
                 ConstData::String(s) => write!(f, "{:?}", s),
                 ConstData::Bool(b) => write!(f, "{}", b),
             },
-            Type::Variable(name) => write!(f, "{}", name),
+            Type::Variable(var) => write!(f, "{}", var.name()),
             Type::Generic(params, t) => {
                 write!(f, "<")?;
                 for (i, p) in params.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}", p)?;
+                    write!(f, "{}", p.name())?;
                 }
                 write!(f, "> {}", t)
             }
@@ -602,6 +611,37 @@ impl Eq for F64 {}
 impl Ord for F64 {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.partial_cmp(other).unwrap()
+    }
+}
+
+impl Variable {
+    pub fn from_spanned_str(spanned: crate::ast::Spanned<String>) -> Self {
+        Variable {
+            name: spanned.node,
+            #[cfg(feature = "extra_span")]
+            span: spanned.span,
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    #[cfg(feature = "extra_span")]
+    pub fn span(&self) -> &crate::ast::Span {
+        &self.span
+    }
+}
+
+impl PartialOrd for Variable {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.name.cmp(&other.name))
+    }
+}
+
+impl Ord for Variable {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.name.cmp(&other.name)
     }
 }
 

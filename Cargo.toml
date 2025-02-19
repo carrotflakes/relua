@@ -9,6 +9,8 @@ default = []
 # Enable this feature to use the floor division operator `//` that was added in Lua 5.3.
 idiv = []
 
+extra_span = []
+
 [dependencies]
 peg = "0.8"
 

@@ -168,7 +168,8 @@ impl<'a> Context<'a> {
                 ast::Statement::Fn { name, function } => {
                     let mut ctx1 = self.child();
                     for p in &function.type_params {
-                        ctx1.type_table.insert(p.clone(), Type::Variable(p.clone()));
+                        ctx1.type_table
+                            .insert(p.name().to_owned(), Type::Variable(p.clone()));
                     }
 
                     let params = ctx1.resolve_types(function.parameters.iter().map(|(_, t)| t));
@@ -456,7 +457,8 @@ impl<'a> Context<'a> {
                 }
                 ast::Statement::Break => {}
                 ast::Statement::TypeAlias(name, type_) => {
-                    self.type_table.insert(name.clone(), type_.clone());
+                    self.type_table
+                        .insert(name.name().to_owned(), type_.clone());
                 }
             }
         }
@@ -638,7 +640,8 @@ impl<'a> Context<'a> {
                 } else {
                     let mut ctx = self.child();
                     for p in &function.type_params {
-                        ctx.type_table.insert(p.clone(), Type::Variable(p.clone()));
+                        ctx.type_table
+                            .insert(p.name().to_owned(), Type::Variable(p.clone()));
                     }
                     let ret_types = ctx
                         .check_function(function)
@@ -741,7 +744,7 @@ impl<'a> Context<'a> {
                         }
                         let mut ctx = self.child();
                         for (param, arg) in params.iter().zip(type_args.iter()) {
-                            ctx.type_table.insert(param.clone(), arg.clone());
+                            ctx.type_table.insert(param.name().to_owned(), arg.clone());
                         }
                         vec![ctx.resolve_type(t)]
                     }
