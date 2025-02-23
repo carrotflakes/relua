@@ -302,8 +302,14 @@ impl<'a> Context<'a> {
                             self.type_match(&expect, actual, &stmt.span);
                             match &vars[i] {
                                 ast::LValue::Variable(v) => {
-                                    let v = self.get_symbol_variable_type(v).unwrap();
-                                    self.symbol_type_guarded.insert(&**v, actual.clone());
+                                    if let Some(v) = self.get_symbol_variable_type(v) {
+                                        self.symbol_type_guarded.insert(&**v, actual.clone());
+                                    } else {
+                                        self.add_error(Error {
+                                            message: format!("Variable not found: {}", &**v),
+                                            location: v.span.clone(),
+                                        });
+                                    }
                                 }
                                 ast::LValue::Index(_, _) => {} // TODO
                             }
@@ -320,8 +326,14 @@ impl<'a> Context<'a> {
                             self.type_match(&expect, &actual, &stmt.span);
                             match &vars[i] {
                                 ast::LValue::Variable(v) => {
-                                    let v = self.get_symbol_variable_type(v).unwrap();
-                                    self.symbol_type_guarded.insert(&**v, actual.clone());
+                                    if let Some(v) = self.get_symbol_variable_type(v) {
+                                        self.symbol_type_guarded.insert(&**v, actual.clone());
+                                    } else {
+                                        self.add_error(Error {
+                                            message: format!("Variable not found: {}", &**v),
+                                            location: v.span.clone(),
+                                        });
+                                    }
                                 }
                                 ast::LValue::Index(_, _) => {} // TODO
                             }
@@ -875,6 +887,10 @@ fn check_table(table_type: &TypeTable, index_type: &Type) -> Result<Type, String
                 .map(|t| check_table(table_type, t))
                 .collect::<Result<Vec<_>, _>>()?;
             return Ok(Type::from_types(ts).unwrap());
+        }
+        Type::Any => {
+            // TODO
+            return Ok(Type::Unknown);
         }
         _ => {}
     }

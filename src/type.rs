@@ -20,6 +20,7 @@ pub enum Type {
     Error,
 }
 
+// NOTE: We can assume that that Option<Box<Type>> is an unknown type.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TypeTable {
     pub consts: Vec<(ConstData, Type)>,
