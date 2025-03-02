@@ -1,0 +1,81 @@
+math.randomseed(os.time())
+
+let WIDTH, HEIGHT = 21, 21  # Make the size odd (alternating walls and paths)
+let maze: {[num]: any} = {}
+let directions: {[num]: {[num]: num}} = {{0, -1}, {1, 0}, {0, 1}, {-1, 0}}  # Up, Right, Down, Left
+
+# Initialize the maze
+for y = 1, HEIGHT {
+    maze[y] = {}
+    for x = 1, WIDTH {
+        maze[y][x] = "#"  # Make everything a wall
+    }
+}
+
+# Generate the maze using depth-first search
+fn generate_maze(x: num, y: num) {
+    maze[y][x] = " "  # Create a path
+    let dirs: {[num]: num} = {1, 2, 3, 4}
+    for i = len!dirs, 2, -1 {  # Shuffle
+        let j: num = math.random(i)
+        dirs[i], dirs[j] = dirs[j], dirs[i]
+    }
+    
+    for k, d: num in ipairs<{[num]: num}>(dirs) {
+        let dx, dy = directions[d][1], directions[d][2]
+        let nx, ny = x + dx * 2, y + dy * 2
+        if ny > 1 && ny < HEIGHT && nx > 1 && nx < WIDTH && maze[ny][nx] == "#" {
+            maze[y + math.floor(dy)][x + math.floor(dx)] = " "  # Break the wall
+            generate_maze(nx, ny)
+        }
+    }
+}
+
+generate_maze(3, 3)  # Starting point (make it odd)
+maze[3][3] = "S"  # Start
+maze[HEIGHT - 2][WIDTH - 2] = "G"  # Goal
+
+# Solve the maze (BFS)
+fn solve_maze() {
+    let queue = {{3, 3}}
+    let visited = {["3,3"]: true}
+    let prev: any = {}
+    
+    while len!queue > 0 {
+        let x: num, y: num = table.unpack(table.remove(queue, 1))
+        
+        if maze[y][x] == "G" {  # Reached the goal
+            let px, py = x, y
+            while prev[py] && prev[py][px] {
+                let nx, ny = prev[py][px][1], prev[py][px][2]
+                if maze[ny][nx] == " " { maze[ny][nx] = "*" maze[(py + ny) / 2][(px + nx) / 2] = "*" }
+                px, py = nx, ny
+            }
+            return
+        }
+        
+        for _, d in ipairs<any>(directions) {
+            let nx, ny = x + d[1] * 2, y + d[2] * 2
+            if maze[y + d[2]] && maze[y + d[2]][x + d[1]] && maze[y + d[2]][x + d[1]] != "#" && !visited[string.format("%d,%d", ny, nx)] {
+                table.insert(queue, {nx, ny})
+                visited[string.format("%d,%d", ny, nx)] = true
+                prev[ny] = prev[ny] || {}
+                prev[ny][nx] = {x, y}
+            }
+        }
+    }
+}
+
+solve_maze()
+
+# Print the maze
+fn print_maze() {
+    for y = 1, HEIGHT {
+        for x = 1, WIDTH {
+            io.write(maze[y][x])
+        }
+        io.write("\n")
+    }
+}
+
+print_maze()
