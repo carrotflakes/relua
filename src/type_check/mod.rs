@@ -103,7 +103,7 @@ impl<'a> Context<'a> {
                     message: e,
                     location: ast::Span::default(), // FIXME
                 });
-                Type::Error
+                Type::Error // NOTE: Should I prevent to type check after this?
             }
         }
     }
@@ -414,15 +414,43 @@ impl<'a> Context<'a> {
                     body,
                 } => {
                     // TODO: type check
-                    for expr in exprs {
-                        self.check_expression(expr);
-                    }
+                    let expr_types = if exprs.len() == 1 {
+                        self.check_expression(&exprs[0])
+                    } else {
+                        exprs
+                            .iter()
+                            .map(|e| {
+                                self.check_expression(e)
+                                    .get(0)
+                                    .cloned()
+                                    .unwrap_or(Type::Nil)
+                            })
+                            .collect()
+                    };
+
+                    let et0 = expr_types.get(0).cloned().unwrap_or(Type::Nil);
+                    self.type_match(
+                        &Type::Function(vec![Type::Any, Type::Any], vec![Type::Any]), // TODO
+                        &et0,
+                        exprs.get(0).map(|e| &e.span).unwrap_or(&stmt.span),
+                    );
+
                     let mut ctx = self.child();
-                    for (name, type_) in variables {
-                        // TODO: We can resolve the type from exprs, can't we?
+                    for i in 0..variables.len() {
+                        let (name, type_) = &variables[i];
+                        let type_actual = if let Type::Function(_, rts) = &et0 {
+                            rts.get(i).cloned().unwrap_or(Type::Nil)
+                        } else {
+                            Type::Any
+                        };
+                        ctx.type_match(
+                            type_.as_ref().unwrap_or(&Type::Any),
+                            &type_actual,
+                            &name.span,
+                        );
                         ctx.insert(
                             name.deref().clone(),
-                            type_.clone().unwrap_or(Type::Any),
+                            type_.clone().unwrap_or(type_actual),
                             Some(name.span.clone()),
                         );
                     }

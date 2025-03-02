@@ -61,7 +61,7 @@ fn row_and_col(src: &str, pos: usize) -> (usize, usize) {
 }
 
 pub fn default_bindings() -> HashMap<String, r#type::Type> {
-    use r#type::{ConstData, Type, TypeTable};
+    use r#type::{ConstData, Type, TypeTable, Variable};
 
     let bindings: HashMap<String, Type> = vec![
         (
@@ -81,14 +81,40 @@ pub fn default_bindings() -> HashMap<String, r#type::Type> {
             ),
         ),
         ("print", Type::Function(vec![Type::Unknown], vec![])),
-        (
-            "pairs",
-            Type::Function(vec![Type::Table(TypeTable::any())], vec![]),
-        ),
-        (
-            "ipairs",
-            Type::Function(vec![Type::Table(TypeTable::any())], vec![]),
-        ),
+        ("pairs", {
+            let t = Variable::from_spanned_str(ast::Spanned::none("T".to_owned()));
+            Type::Generic(
+                vec![t.clone()],
+                Box::new(Type::Function(
+                    vec![Type::Variable(t.clone())],
+                    vec![
+                        Type::Function(
+                            vec![Type::Variable(t.clone()), Type::Unknown],
+                            vec![Type::Any, Type::Any],
+                        ),
+                        Type::Variable(t.clone()),
+                        Type::Nil,
+                    ],
+                )),
+            )
+        }),
+        ("ipairs", {
+            let t = Variable::from_spanned_str(ast::Spanned::none("T".to_owned()));
+            Type::Generic(
+                vec![t.clone()],
+                Box::new(Type::Function(
+                    vec![Type::Variable(t.clone())],
+                    vec![
+                        Type::Function(
+                            vec![Type::Variable(t.clone()), Type::Number],
+                            vec![Type::Number, Type::Any],
+                        ),
+                        Type::Variable(t.clone()),
+                        Type::Const(ConstData::try_from_f64(0.0).unwrap()),
+                    ],
+                )),
+            )
+        }),
         (
             "math",
             Type::Table(TypeTable {
@@ -146,6 +172,17 @@ pub fn default_bindings() -> HashMap<String, r#type::Type> {
         ),
         (
             "debug",
+            Type::Table(TypeTable {
+                consts: vec![],
+                number: None,
+                string: Some(Box::new(Type::Any)),
+                bool: None,
+                table: None,
+                function: None,
+            }),
+        ),
+        (
+            "coroutine",
             Type::Table(TypeTable {
                 consts: vec![],
                 number: None,

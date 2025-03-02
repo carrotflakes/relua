@@ -55,7 +55,7 @@ for i = 1, 10, 2 {
 }
 "#,
         r#"
-for k, v in pairs({1, 2, 3}) {
+for k, v in pairs<{1:1,2:2,3:3}>({1, 2, 3}) {
     print(k, v)
 }
 "#,
