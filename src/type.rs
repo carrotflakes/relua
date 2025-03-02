@@ -1,5 +1,7 @@
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Type {
+    Error,
+
     Any,
     Unknown,
 
@@ -16,8 +18,6 @@ pub enum Type {
 
     Variable(Variable),
     Generic(Vec<Variable>, Box<Type>),
-
-    Error,
 }
 
 // NOTE: We can assume that that Option<Box<Type>> is an unknown type.
@@ -63,7 +63,7 @@ impl Type {
 
     pub fn include(&self, other: &Type) -> bool {
         match (self, other) {
-            (Type::Error, _) | (_, Type::Error) => panic!("Error type should not be compared"),
+            (Type::Error, _) | (_, Type::Error) => true,
 
             (l @ Type::Union(_), Type::Union(r)) => r.iter().all(|r| l.include(r)),
             (Type::Union(l), r) => l.iter().any(|t| t.include(r)),
@@ -104,7 +104,7 @@ impl Type {
 
     pub fn intersect(&self, other: &Type) -> Type {
         match (self, other) {
-            (Type::Error, _) | (_, Type::Error) => panic!("Error type should not be compared"),
+            (Type::Error, _) | (_, Type::Error) => Type::Error,
 
             (Type::Union(l), Type::Union(r)) => {
                 let mut types = vec![];

@@ -281,6 +281,7 @@ impl<'a> Context<'a> {
                                         let index_type = self.check_expression(index)[0].clone();
                                         self.check_table(&table_type, &index_type, &stmt.span)
                                     }
+                                    Type::Error => Type::Error,
                                     _ => {
                                         self.add_error(Error {
                                             message: format!("Not a table: {}", table_type),
@@ -382,8 +383,9 @@ impl<'a> Context<'a> {
                 }
                 ast::Statement::While { condition, body } => {
                     self.check_expression(condition);
-                    // TODO: type guard
-                    self.child().check_statements(body, return_type)?;
+                    let (mut child, _) = self.conditioned(condition);
+                    child.check_statements(body, return_type)?;
+                    // TODO: Update type guard
                 }
                 ast::Statement::ForNumeric {
                     variable,
@@ -581,7 +583,7 @@ impl<'a> Context<'a> {
                     for arg in arguments {
                         self.check_expression(arg);
                     }
-                    return vec![Type::Any]; // TODO
+                    return vec![Type::Any; 16]; // TODO: We want to return [any, any, any, ...]
                 }
 
                 if let Type::Error = func_type {
@@ -875,6 +877,10 @@ impl<'a> Context<'a> {
 }
 
 fn check_table(table_type: &TypeTable, index_type: &Type) -> Result<Type, String> {
+    if index_type.is_error() {
+        return Ok(Type::Error);
+    }
+
     match index_type {
         Type::Number => {
             if let Some(t) = &table_type.number {
@@ -918,10 +924,15 @@ fn check_table(table_type: &TypeTable, index_type: &Type) -> Result<Type, String
         }
         Type::Any => {
             // TODO
-            return Ok(Type::Unknown);
+            return Ok(Type::Any);
         }
-        _ => {}
+        _ => {
+            // TODO
+        }
     }
+
+    // According to the Lua specification, It returns nil if the index is not found.
+    // Ok(Type::Nil)
     Err(format!("Invalid index type: {}", index_type))
 }
 
