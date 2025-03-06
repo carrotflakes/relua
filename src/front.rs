@@ -157,7 +157,7 @@ peg::parser!(pub grammar parser() for str {
 
     rule function() -> Function
         = "fn" _ tps:type_params() _
-        "(" params:((_ i:spanned_identifier() _ ":" _ t:type_() {(i, t)}) ** ",") ")" _
+        "(" params:((_ i:spanned_identifier() _ ":" _ t:type_() {(i, t)}) ** ",") _ ")" _
         rt:ret_types()?
         "{" _ stmts:statements() _ "}"
         { Function { type_params: tps, parameters: params, return_types: rt, body: stmts } }
