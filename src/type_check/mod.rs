@@ -23,6 +23,7 @@ pub struct Context<'a> {
     symbol_table: HashMap<String, Arc<Type>>,
     symbol_type_guarded: HashMap<*const Type, Type>,
     type_table: HashMap<String, Type>,
+    type_guard_propagation: bool,
 }
 
 enum ReturnType {
@@ -40,6 +41,7 @@ impl<'a> Context<'a> {
                 .collect(),
             symbol_type_guarded: HashMap::new(),
             type_table: HashMap::new(),
+            type_guard_propagation: true,
         }
     }
 
@@ -49,6 +51,7 @@ impl<'a> Context<'a> {
             symbol_table: HashMap::new(),
             symbol_type_guarded: HashMap::new(),
             type_table: HashMap::new(),
+            type_guard_propagation: true,
         }
     }
 
@@ -81,9 +84,28 @@ impl<'a> Context<'a> {
             if let Some(t) = c.symbol_type_guarded.get(&Arc::as_ptr(&at)) {
                 return Some(t);
             }
-            ctx = c.parent.clone().ok();
+            ctx = if c.type_guard_propagation {
+                c.parent.clone().ok()
+            } else {
+                None
+            };
         }
         Some(&**at)
+    }
+
+    fn all_symbols(&self) -> Vec<(&String, &Arc<Type>)> {
+        let mut symbols = vec![];
+        let mut ctx = Some(self);
+        while let Some(c) = ctx {
+            for (name, type_) in &c.symbol_table {
+                if symbols.iter().all(|(n, _)| *n != name) {
+                    symbols.push((name, type_));
+                }
+            }
+            ctx = c.parent.clone().ok();
+        }
+
+        symbols
     }
 
     fn resolve_type(&self, type_: &Type) -> Type {
@@ -507,11 +529,11 @@ impl<'a> Context<'a> {
         Ok(())
     }
 
-    fn check_function(&self, function: &ast::Function) -> Result<Vec<Type>, ()> {
-        let mut ctx = self.child();
+    fn check_function(mut self, function: &ast::Function) -> Result<Vec<Type>, ()> {
+        self.type_guard_propagation = false;
 
         for (name, type_) in &function.parameters {
-            ctx.insert((**name).clone(), self.resolve_type(type_), None);
+            self.insert((**name).clone(), self.resolve_type(type_), None);
         }
 
         let mut ret_types = match &function.return_types {
@@ -519,7 +541,7 @@ impl<'a> Context<'a> {
             None => ReturnType::Infer(vec![]),
         };
 
-        ctx.check_statements(&function.body, &mut ret_types)?;
+        self.check_statements(&function.body, &mut ret_types)?;
 
         Ok(ret_types.into_types())
     }
@@ -673,6 +695,7 @@ impl<'a> Context<'a> {
             ast::Expression::Fn(function) => {
                 if function.type_params.is_empty() {
                     let ret_types = self
+                        .child()
                         .check_function(function)
                         .unwrap_or_else(|_| vec![Type::Error]);
                     vec![Type::Function(
@@ -804,13 +827,13 @@ impl<'a> Context<'a> {
 
     fn conditioned(&'a self, condition: &ast::SpannedExpression) -> (Self, Self) {
         let type_filter = type_filter::expression_to_type_filter(condition);
+        let all_symbols = self.all_symbols();
         if let Some(type_filter) = type_filter {
             let type_filter = type_filter::type_filter_to_dnf(&type_filter);
             let ctx1 = Context {
                 parent: Ok(self),
                 symbol_table: HashMap::new(),
-                symbol_type_guarded: self
-                    .symbol_table
+                symbol_type_guarded: all_symbols
                     .iter()
                     .filter_map(|(name, at)| {
                         let r#type = self.get_symbol_type(name).unwrap();
@@ -824,12 +847,12 @@ impl<'a> Context<'a> {
                     })
                     .collect(),
                 type_table: HashMap::new(),
+                type_guard_propagation: true,
             };
             let ctx2 = Context {
                 parent: Ok(self),
                 symbol_table: HashMap::new(),
-                symbol_type_guarded: self
-                    .symbol_table
+                symbol_type_guarded: all_symbols
                     .iter()
                     .filter_map(|(name, at)| {
                         let r#type = self.get_symbol_type(name).unwrap();
@@ -843,6 +866,7 @@ impl<'a> Context<'a> {
                     })
                     .collect(),
                 type_table: HashMap::new(),
+                type_guard_propagation: true,
             };
             (ctx1, ctx2)
         } else {

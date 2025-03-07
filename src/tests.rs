@@ -138,6 +138,8 @@ f("1")
         r#"let x: num | () = 1 x = 2 let y: num = x"#,
         r#"let x: num | () = 1 if !x {x=2} let y: num = x"#,
         r#"let x: num = "1" as any as num"#,
+        r#"let x: num | () = 1 if x {fn() -> () {let y: num = x}}"#,
+        r#"let x: num | () = 1 fn() -> () {if x {let y: num = x}}"#,
     ];
     for src in &srcs {
         let prog = parser::program(src).unwrap();
