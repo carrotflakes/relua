@@ -838,9 +838,8 @@ impl<'a> Context<'a> {
     }
 
     fn conditioned(&'a self, condition: &ast::SpannedExpression) -> (Self, Self) {
-        let type_filter = type_filter::expression_to_type_filter(condition);
-        let all_symbols = self.all_symbols();
-        if let Some(type_filter) = type_filter {
+        if let Some(type_filter) = type_filter::expression_to_type_filter(condition) {
+            let all_symbols = self.all_symbols();
             let type_filter = type_filter::type_filter_to_dnf(&type_filter);
             (
                 self.type_guarded(&all_symbols, &type_filter, false),
