@@ -84,6 +84,36 @@ impl Type {
         }
     }
 
+    pub fn is_truthy(&self) -> Option<bool> {
+        match self {
+            Type::Bool => None,
+            Type::Nil => Some(false),
+            Type::Number => Some(true),
+            Type::String => Some(true),
+            Type::Any => None,
+            Type::Unknown => None,
+            Type::Union(types) => {
+                let types = types
+                    .iter()
+                    .map(|t| t.is_truthy())
+                    .collect::<Option<Vec<_>>>()?;
+                if types.iter().all(|t| *t) {
+                    return Some(true);
+                }
+                if types.iter().all(|t| !*t) {
+                    return Some(false);
+                }
+                return None;
+            }
+            Type::Table(_) => return Some(true),
+            Type::Error => None,
+            Type::Function(_, _) => Some(true),
+            Type::Const(d) => Some(d != &ConstData::Bool(false)),
+            Type::Variable(_) => None,
+            Type::Generic(_, _) => None,
+        }
+    }
+
     pub fn include(&self, other: &Type) -> bool {
         match (self, other) {
             (Type::Error, _) | (_, Type::Error) => true,

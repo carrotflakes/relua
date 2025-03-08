@@ -778,14 +778,42 @@ impl<'a> Context<'a> {
                 })]
             }
             ast::Expression::LogicalAnd(a, b) => {
-                let a = self.check_expression(a);
-                let b = self.check_expression(b);
-                vec![Type::from_types(vec![a[0].clone(), b[0].clone()]).unwrap()]
+                let ta = self.check_expression(a);
+                let type_filter = type_filter::expression_to_type_filter(a);
+                let tb = if let Some(type_filter) = type_filter {
+                    let all_symbols = self.all_symbols();
+                    let type_filter = type_filter::type_filter_to_dnf(&type_filter);
+                    let mut ctx = self.type_guarded(&all_symbols, &type_filter, false);
+                    ctx.check_expression(b)
+                } else {
+                    self.check_expression(b)
+                };
+                match ta[0].is_truthy() {
+                    Some(true) => tb,
+                    Some(false) => ta,
+                    None => {
+                        vec![Type::Union(vec![ta[0].clone(), tb[0].clone()]).normalize()]
+                    }
+                }
             }
             ast::Expression::LogicalOr(a, b) => {
-                let a = self.check_expression(a);
-                let b = self.check_expression(b);
-                vec![Type::from_types(vec![a[0].clone(), b[0].clone()]).unwrap()]
+                let ta = self.check_expression(a);
+                let type_filter = type_filter::expression_to_type_filter(a);
+                let tb = if let Some(type_filter) = type_filter {
+                    let all_symbols = self.all_symbols();
+                    let type_filter = type_filter::type_filter_to_dnf(&type_filter);
+                    let mut ctx = self.type_guarded(&all_symbols, &type_filter, true);
+                    ctx.check_expression(b)
+                } else {
+                    self.check_expression(b)
+                };
+                match ta[0].is_truthy() {
+                    Some(true) => ta,
+                    Some(false) => tb,
+                    None => {
+                        vec![Type::Union(vec![ta[0].clone(), tb[0].clone()]).normalize()]
+                    }
+                }
             }
             ast::Expression::LogicalNot(e) => {
                 self.check_expression(e);
