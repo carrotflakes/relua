@@ -575,7 +575,7 @@ impl<'a> Context<'a> {
                 function,
                 arguments,
             } => {
-                let func_type = if let ast::Expression::Literal(ast::Literal::String(f)) =
+                let mut func_type = if let ast::Expression::Literal(ast::Literal::String(f)) =
                     &***function
                 {
                     match f.as_str() {
@@ -616,36 +616,60 @@ impl<'a> Context<'a> {
                     return vec![Type::Error];
                 }
 
-                if let Type::Function(params, return_types) = func_type {
-                    if arguments.len() == 1 {
-                        let actual = self.check_expression(&arguments[0]);
-                        for i in 0..params.len() {
-                            let param = self.resolve_type(&params[i]);
-                            self.type_match(
-                                &param,
-                                actual.get(i).unwrap_or(&Type::Nil),
-                                &expr.span,
+                let arg_types: Vec<_> = if arguments.len() == 1 {
+                    self.check_expression(&arguments[0])
+                } else {
+                    arguments
+                        .iter()
+                        .map(|arg| {
+                            self.check_expression(arg)
+                                .first()
+                                .cloned()
+                                .unwrap_or(Type::Nil)
+                        })
+                        .collect()
+                };
+
+                // Resolve generic types (if it's easy)
+                'resolve: {
+                    if let Type::Generic(tvs, t) = &func_type {
+                        if let Type::Function(params, return_types) = &**t {
+                            let mut ctx = self.child();
+                            for tv in tvs.iter() {
+                                if let Some(i) = params.iter().position(|p| {
+                                    if let Type::Variable(v_) = p {
+                                        tv == v_
+                                    } else {
+                                        false
+                                    }
+                                }) {
+                                    let t = arg_types.get(i).unwrap_or(&Type::Nil);
+                                    ctx.type_table.insert(tv.name().to_owned(), t.clone());
+                                } else {
+                                    break 'resolve;
+                                }
+                            }
+                            func_type = Type::Function(
+                                ctx.resolve_types(params.iter()).to_vec(),
+                                ctx.resolve_types(return_types.iter()).to_vec(),
                             );
                         }
-                    } else {
-                        for i in 0..params.len() {
-                            let param = self.resolve_type(&params[i]);
-                            let actual = if let Some(arg) = arguments.get(i) {
-                                self.check_expression(arg)[0].clone()
-                            } else {
-                                Type::Nil
-                            };
-                            self.type_match(&param, &actual, &expr.span);
-                        }
                     }
-                    return_types
-                } else {
-                    self.add_error(Error {
-                        message: format!("Not a function: {}", func_type),
-                        location: expr.span.clone(),
-                    });
-                    vec![Type::Error]
                 }
+
+                if let Type::Function(params, return_types) = func_type {
+                    for i in 0..params.len() {
+                        let param = self.resolve_type(&params[i]);
+                        self.type_match(&param, arg_types.get(i).unwrap_or(&Type::Nil), &expr.span);
+                    }
+                    return return_types;
+                }
+
+                self.add_error(Error {
+                    message: format!("Not a function: {}", func_type),
+                    location: expr.span.clone(),
+                });
+                vec![Type::Error]
             }
             ast::Expression::Index { table, index } => {
                 let table_types = self.check_expression(table);
@@ -837,15 +861,13 @@ impl<'a> Context<'a> {
                 symbol_type_guarded: all_symbols
                     .iter()
                     .filter_map(|(name, at)| {
-                        // TODO: resolve is a workaround
-                        let r#type = self
-                            .get_symbol_type(name)
-                            .unwrap()
-                            .resolve(&|_| None)
-                            .ok()?;
+                        let r#type = self.get_symbol_type(name).unwrap();
+                        if !r#type.is_concrete() {
+                            return None;
+                        }
                         let type_ =
                             type_filter::type_filter_apply(&type_filter, name, &r#type, false);
-                        if r#type == type_ {
+                        if r#type == &type_ {
                             None
                         } else {
                             Some((Arc::as_ptr(at), type_))
@@ -861,14 +883,13 @@ impl<'a> Context<'a> {
                 symbol_type_guarded: all_symbols
                     .iter()
                     .filter_map(|(name, at)| {
-                        let r#type = self
-                            .get_symbol_type(name)
-                            .unwrap()
-                            .resolve(&|_| None)
-                            .ok()?;
+                        let r#type = self.get_symbol_type(name).unwrap();
+                        if !r#type.is_concrete() {
+                            return None;
+                        }
                         let type_ =
                             type_filter::type_filter_apply(&type_filter, name, &r#type, true);
-                        if r#type == type_ {
+                        if r#type == &type_ {
                             None
                         } else {
                             Some((Arc::as_ptr(at), type_))

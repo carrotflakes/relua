@@ -41,7 +41,7 @@ pub enum ConstData {
 #[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct F64(f64);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Variable {
     name: String,
     #[cfg(feature = "extra_span")]
@@ -59,6 +59,29 @@ impl Type {
 
     pub fn is_error(&self) -> bool {
         matches!(self, Type::Error)
+    }
+
+    pub fn is_concrete(&self) -> bool {
+        match self {
+            Type::Union(types) => types.iter().all(|t| t.is_concrete()),
+            Type::Any | Type::Unknown => true,
+            Type::Number | Type::String | Type::Bool | Type::Nil => true,
+            Type::Table(t) => {
+                t.consts.iter().all(|(_, t)| t.is_concrete())
+                    && t.number.as_ref().map(|t| t.is_concrete()).unwrap_or(true)
+                    && t.string.as_ref().map(|t| t.is_concrete()).unwrap_or(true)
+                    && t.bool.as_ref().map(|t| t.is_concrete()).unwrap_or(true)
+                    && t.table.as_ref().map(|t| t.is_concrete()).unwrap_or(true)
+                    && t.function.as_ref().map(|t| t.is_concrete()).unwrap_or(true)
+            }
+            Type::Function(ps, r) => {
+                ps.iter().all(|t| t.is_concrete()) && r.iter().all(|t| t.is_concrete())
+            }
+            Type::Const(_) => true,
+            Type::Variable(_) => true, // !?
+            Type::Generic(_, _) => false,
+            Type::Error => false,
+        }
     }
 
     pub fn include(&self, other: &Type) -> bool {
@@ -98,6 +121,7 @@ impl Type {
             (Type::Function(_, _), _) => false,
             (Type::Variable(l), Type::Variable(r)) => l == r, // Is this correct?
             (Type::Variable(_), _) => panic!("Variable type should be resolved: {}", self),
+            // (Type::Variable(_), _) => true,
             (Type::Generic(_, _), _) => panic!("Generic type should be resolved: {}", self),
         }
     }
@@ -633,6 +657,14 @@ impl Variable {
         &self.span
     }
 }
+
+impl PartialEq for Variable {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name
+    }
+}
+
+impl Eq for Variable {}
 
 impl PartialOrd for Variable {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
