@@ -453,6 +453,7 @@ impl<'a> Context<'a> {
                     };
 
                     let et0 = expr_types.get(0).cloned().unwrap_or(Type::Nil);
+                    let et0 = self.resolve_type(&et0); // ?
                     self.type_match(
                         &Type::Function(vec![Type::Any, Type::Any], vec![Type::Any]), // TODO
                         &et0,
@@ -836,10 +837,15 @@ impl<'a> Context<'a> {
                 symbol_type_guarded: all_symbols
                     .iter()
                     .filter_map(|(name, at)| {
-                        let r#type = self.get_symbol_type(name).unwrap();
+                        // TODO: resolve is a workaround
+                        let r#type = self
+                            .get_symbol_type(name)
+                            .unwrap()
+                            .resolve(&|_| None)
+                            .ok()?;
                         let type_ =
-                            type_filter::type_filter_apply(&type_filter, name, r#type, false);
-                        if r#type == &type_ {
+                            type_filter::type_filter_apply(&type_filter, name, &r#type, false);
+                        if r#type == type_ {
                             None
                         } else {
                             Some((Arc::as_ptr(at), type_))
@@ -855,10 +861,14 @@ impl<'a> Context<'a> {
                 symbol_type_guarded: all_symbols
                     .iter()
                     .filter_map(|(name, at)| {
-                        let r#type = self.get_symbol_type(name).unwrap();
+                        let r#type = self
+                            .get_symbol_type(name)
+                            .unwrap()
+                            .resolve(&|_| None)
+                            .ok()?;
                         let type_ =
-                            type_filter::type_filter_apply(&type_filter, name, r#type, true);
-                        if r#type == &type_ {
+                            type_filter::type_filter_apply(&type_filter, name, &r#type, true);
+                        if r#type == type_ {
                             None
                         } else {
                             Some((Arc::as_ptr(at), type_))
