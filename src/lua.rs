@@ -152,6 +152,7 @@ fn statements(writer: &mut impl Write, stmts: &[ast::SpannedStatement]) -> std::
                 writer.write_str("end\n")?;
             }
             ast::Statement::TypeAlias(_, _) => {}
+            ast::Statement::DeclareLet(_) => {}
         }
     }
     Ok(())

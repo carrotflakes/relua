@@ -512,6 +512,11 @@ impl<'a> Context<'a> {
                     self.type_table
                         .insert(name.name().to_owned(), type_.clone());
                 }
+                ast::Statement::DeclareLet(vs) => {
+                    for (name, type_) in vs {
+                        self.insert(name.deref().clone(), type_.clone(), Some(name.span.clone()));
+                    }
+                }
             }
         }
         Ok(())

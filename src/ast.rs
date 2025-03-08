@@ -62,6 +62,7 @@ pub enum Statement {
     Return(Vec<SpannedExpression>),
     Break,
     TypeAlias(TypeVariable, Type),
+    DeclareLet(Vec<(VariableIdent, Type)>),
 }
 
 pub type SpannedStatement = Spanned<Statement>;

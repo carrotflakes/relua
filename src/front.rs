@@ -3,7 +3,7 @@ use crate::r#type::{ConstData, Type, TypeTable, Variable as TypeVariable};
 
 // NOTE: We cannot add "type" to the forbidden identifiers because it is a function in Lua.
 const FORBIDDEN_IDENTIFIERS: &[&str] = &[
-    "fn", "let", "if", "else", "while", "for", "in", "return", "break", "true", "false", "as",
+    "fn", "let", "if", "else", "while", "for", "in", "return", "break", "true", "false", "as", "declare",
 ];
 
 // https://docs.rs/peg/latest/peg/
@@ -35,6 +35,7 @@ peg::parser!(pub grammar parser() for str {
             / assignment()
             / def_function()
             / type_alias()
+            / declare_let()
             / e:expression() { Statement::Expression(e) }
         >)
 
@@ -71,7 +72,7 @@ peg::parser!(pub grammar parser() for str {
         }
 
     rule def_function() -> Statement
-        = "fn" _ name:spanned_identifier() _ tps:type_params() _
+        = "fn" _ name:spanned_identifier() _ tps:type_params_opt() _
         "(" params:((_ i:spanned_identifier() _ ":" _ t:type_() {(i, t)}) ** ",") ")" _
         rt:ret_types()?
         "{" _ stmts:statements() _ "}"
@@ -79,6 +80,9 @@ peg::parser!(pub grammar parser() for str {
 
     rule type_alias() -> Statement
         = "type" _ name:spanned_identifier() _ "=" _ t:type_() { Statement::TypeAlias(TypeVariable::from_spanned_str(name), t) }
+
+    rule declare_let() -> Statement
+        = "declare" _ "let" _ vs:((_ name:spanned_identifier() _ ":" _ t:type_() _ { (name, t) }) ++ ",") { Statement::DeclareLet(vs) }
 
     rule lval() -> LValue
         = t:expression() {?
@@ -156,7 +160,7 @@ peg::parser!(pub grammar parser() for str {
         / "[" _ k:expression() _ "]" _ ":" _ v:expression() { (Some(TableKey::Expression(k)), v) }
 
     rule function() -> Function
-        = "fn" _ tps:type_params() _
+        = "fn" _ tps:type_params_opt() _
         "(" params:((_ i:spanned_identifier() _ ":" _ t:type_() {(i, t)}) ** ",") _ ")" _
         rt:ret_types()?
         "{" _ stmts:statements() _ "}"
@@ -181,6 +185,8 @@ peg::parser!(pub grammar parser() for str {
 
     rule type_() -> Type = precedence!{
         a:(@) _ "|" _ b:@ { Type::Union(vec![a, b]).normalize() }
+        --
+        tps:type_params() _ a:@ { Type::Generic(tps, Box::new(a)) }
         --
         t:type_table() { t }
         a:type_function() { a }
@@ -242,7 +248,9 @@ peg::parser!(pub grammar parser() for str {
 
     rule type_params() -> Vec<TypeVariable>
         = "<" _ ts:((_ t:spanned_identifier() _ { TypeVariable::from_spanned_str(t) }) ++ ",") ">" _ { ts }
-        / { vec![] }
+
+    rule type_params_opt() -> Vec<TypeVariable>
+        = type_params() / { vec![] }
 
     rule type_args() -> Vec<Type>
         = "<" _ ts:((_ t:type_() _ { t }) ++ ",") ">" _ { ts }
