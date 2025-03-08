@@ -388,9 +388,13 @@ impl<'a> Context<'a> {
                 }
                 ast::Statement::While { condition, body } => {
                     self.check_expression(condition);
-                    let (mut child, _) = self.conditioned(condition);
-                    child.check_statements(body, return_type)?;
-                    // TODO: Update type guard
+                    let (mut ctx1, ctx2) = self.conditioned(condition);
+                    ctx1.check_statements(body, return_type)?;
+
+                    // Update type guard:
+                    for (v, t) in ctx2.symbol_type_guarded.iter() {
+                        self.symbol_type_guarded.insert(*v, t.clone());
+                    }
                 }
                 ast::Statement::ForNumeric {
                     variable,
