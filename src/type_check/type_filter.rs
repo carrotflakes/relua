@@ -129,9 +129,7 @@ pub fn expression_to_type_filter(expr: &ast::SpannedExpression) -> Option<TypeFi
             TypeFilterItem::Truthy,
         )),
         ast::Expression::As(e, _) => expression_to_type_filter(e),
-        ast::Expression::TypeResolve(_, _) => {
-            None // TODO
-        }
+        ast::Expression::TypeResolve(e, _) => expression_to_type_filter(e),
     }
 }
 
@@ -185,9 +183,9 @@ fn process_eq(args: &Vec<ast::Spanned<ast::Expression>>) -> Option<TypeFilter> {
     None
 }
 
-pub fn type_filter_to_dnf(
-    tf: &TypeFilter,
-) -> Vec<Vec<(String, Vec<ConstData>, TypeFilterItem, bool)>> {
+pub type TfDnf = Vec<Vec<(String, Vec<ConstData>, TypeFilterItem, bool)>>;
+
+pub fn type_filter_to_dnf(tf: &TypeFilter) -> TfDnf {
     match tf {
         TypeFilter::Item(name, path, i) => {
             vec![vec![(name.clone(), path.clone(), i.clone(), false)]]
@@ -233,12 +231,7 @@ pub fn type_filter_to_dnf(
     }
 }
 
-pub fn type_filter_apply(
-    tf: &Vec<Vec<(String, Vec<ConstData>, TypeFilterItem, bool)>>,
-    name: &str,
-    type_: &Type,
-    neg: bool,
-) -> Type {
+pub fn type_filter_apply(tf: &TfDnf, name: &str, type_: &Type, neg: bool) -> Type {
     let mut result = Vec::new();
     for clause in tf {
         let mut clause_result = type_.clone();

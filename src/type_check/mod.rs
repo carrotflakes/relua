@@ -5,6 +5,8 @@ use std::collections::HashMap;
 use std::ops::Deref;
 use std::sync::Arc;
 
+use type_filter::TfDnf;
+
 use crate::ast;
 use crate::r#type::{ConstData, Type, TypeTable};
 
@@ -316,50 +318,31 @@ impl<'a> Context<'a> {
                         })
                         .collect::<Vec<_>>();
 
-                    if exprs.len() == 1 {
-                        // let x, y = f()
-                        let actual = self.check_expression(&exprs[0]);
-                        for i in 0..var_types.len() {
-                            let expect = self.resolve_type(&var_types[i]);
-                            let actual = actual.get(i).unwrap_or(&Type::Nil);
-                            self.type_match(&expect, actual, &stmt.span);
-                            match &vars[i] {
-                                ast::LValue::Variable(v) => {
-                                    if let Some(v) = self.get_symbol_variable_type(v) {
-                                        self.symbol_type_guarded.insert(&**v, actual.clone());
-                                    } else {
-                                        self.add_error(Error {
-                                            message: format!("Variable not found: {}", &**v),
-                                            location: v.span.clone(),
-                                        });
-                                    }
-                                }
-                                ast::LValue::Index(_, _) => {} // TODO
-                            }
-                        }
+                    let actuals = if exprs.len() == 1 {
+                        self.check_expression(&exprs[0])
                     } else {
-                        // let x, y = 1, 2
-                        for i in 0..var_types.len().max(exprs.len()) {
-                            let actual = if i < exprs.len() {
-                                self.check_expression(&exprs[i])[0].clone()
-                            } else {
-                                Type::Nil
-                            };
-                            let expect = self.resolve_type(&var_types[i]);
-                            self.type_match(&expect, &actual, &stmt.span);
-                            match &vars[i] {
-                                ast::LValue::Variable(v) => {
-                                    if let Some(v) = self.get_symbol_variable_type(v) {
-                                        self.symbol_type_guarded.insert(&**v, actual.clone());
-                                    } else {
-                                        self.add_error(Error {
-                                            message: format!("Variable not found: {}", &**v),
-                                            location: v.span.clone(),
-                                        });
-                                    }
-                                }
-                                ast::LValue::Index(_, _) => {} // TODO
+                        exprs
+                            .iter()
+                            .map(|e| {
+                                self.check_expression(e)
+                                    .get(0)
+                                    .cloned()
+                                    .unwrap_or(Type::Nil)
+                            })
+                            .collect::<Vec<_>>()
+                    };
+                    for i in 0..var_types.len() {
+                        let actual = actuals.get(i).unwrap_or(&Type::Nil);
+                        let expect = self.resolve_type(&var_types[i]);
+                        self.type_match(&expect, actual, &stmt.span);
+                        match &vars[i] {
+                            ast::LValue::Variable(v) => {
+                                let v = self
+                                    .get_symbol_variable_type(v)
+                                    .expect("The variable was already checked");
+                                self.symbol_type_guarded.insert(&**v, actual.clone());
                             }
+                            ast::LValue::Index(_, _) => {} // TODO
                         }
                     }
                 }
@@ -855,53 +838,41 @@ impl<'a> Context<'a> {
         let all_symbols = self.all_symbols();
         if let Some(type_filter) = type_filter {
             let type_filter = type_filter::type_filter_to_dnf(&type_filter);
-            let ctx1 = Context {
-                parent: Ok(self),
-                symbol_table: HashMap::new(),
-                symbol_type_guarded: all_symbols
-                    .iter()
-                    .filter_map(|(name, at)| {
-                        let r#type = self.get_symbol_type(name).unwrap();
-                        if !r#type.is_concrete() {
-                            return None;
-                        }
-                        let type_ =
-                            type_filter::type_filter_apply(&type_filter, name, &r#type, false);
-                        if r#type == &type_ {
-                            None
-                        } else {
-                            Some((Arc::as_ptr(at), type_))
-                        }
-                    })
-                    .collect(),
-                type_table: HashMap::new(),
-                type_guard_propagation: true,
-            };
-            let ctx2 = Context {
-                parent: Ok(self),
-                symbol_table: HashMap::new(),
-                symbol_type_guarded: all_symbols
-                    .iter()
-                    .filter_map(|(name, at)| {
-                        let r#type = self.get_symbol_type(name).unwrap();
-                        if !r#type.is_concrete() {
-                            return None;
-                        }
-                        let type_ =
-                            type_filter::type_filter_apply(&type_filter, name, &r#type, true);
-                        if r#type == &type_ {
-                            None
-                        } else {
-                            Some((Arc::as_ptr(at), type_))
-                        }
-                    })
-                    .collect(),
-                type_table: HashMap::new(),
-                type_guard_propagation: true,
-            };
-            (ctx1, ctx2)
+            (
+                self.type_guarded(&all_symbols, &type_filter, false),
+                self.type_guarded(&all_symbols, &type_filter, true),
+            )
         } else {
             (self.child(), self.child())
+        }
+    }
+
+    fn type_guarded(
+        &self,
+        all_symbols: &Vec<(&String, &Arc<Type>)>,
+        type_filter: &TfDnf,
+        neg: bool,
+    ) -> Context<'_> {
+        Context {
+            parent: Ok(self),
+            symbol_table: HashMap::new(),
+            symbol_type_guarded: all_symbols
+                .iter()
+                .filter_map(|(name, at)| {
+                    let r#type = self.get_symbol_type(name).unwrap();
+                    if !r#type.is_concrete() {
+                        return None;
+                    }
+                    let type_ = type_filter::type_filter_apply(type_filter, name, &r#type, neg);
+                    if r#type == &type_ {
+                        None
+                    } else {
+                        Some((Arc::as_ptr(at), type_))
+                    }
+                })
+                .collect(),
+            type_table: HashMap::new(),
+            type_guard_propagation: true,
         }
     }
 
