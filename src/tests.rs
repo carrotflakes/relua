@@ -144,6 +144,8 @@ f("1")
         r#"let x: num | () = 1 while x {} let y: () = x"#,
         r#"let x: num | () = 1 x && x + 1"#,
         r#"let x: num | () = 1 x || x + 1"#,
+        r#"(fn<T>(a: T) {return a})(1)"#,
+        r#"(fn<T>(a: {T}) {return a})({1})"#,
     ];
     for src in &srcs {
         let prog = parser::program(src).unwrap();
