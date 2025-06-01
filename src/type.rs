@@ -24,11 +24,11 @@ pub enum Type {
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct TypeTable {
     pub consts: Vec<(ConstData, Type)>,
-    pub number: Option<Box<Type>>,
-    pub string: Option<Box<Type>>,
-    pub bool: Option<Box<Type>>,
-    pub table: Option<Box<Type>>,
-    pub function: Option<Box<Type>>,
+    pub number: Box<Type>,
+    pub string: Box<Type>,
+    pub bool: Box<Type>,
+    pub table: Box<Type>,
+    pub function: Box<Type>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -68,11 +68,11 @@ impl Type {
             Type::Number | Type::String | Type::Bool | Type::Nil => true,
             Type::Table(t) => {
                 t.consts.iter().all(|(_, t)| t.is_concrete())
-                    && t.number.as_ref().map(|t| t.is_concrete()).unwrap_or(true)
-                    && t.string.as_ref().map(|t| t.is_concrete()).unwrap_or(true)
-                    && t.bool.as_ref().map(|t| t.is_concrete()).unwrap_or(true)
-                    && t.table.as_ref().map(|t| t.is_concrete()).unwrap_or(true)
-                    && t.function.as_ref().map(|t| t.is_concrete()).unwrap_or(true)
+                    && t.number.is_concrete()
+                    && t.string.is_concrete()
+                    && t.bool.is_concrete()
+                    && t.table.is_concrete()
+                    && t.function.is_concrete()
             }
             Type::Function(ps, r) => {
                 ps.iter().all(|t| t.is_concrete()) && r.iter().all(|t| t.is_concrete())
@@ -289,31 +289,11 @@ impl Type {
                     .iter()
                     .map(|(cd, t)| Ok((cd.clone(), t.resolve(map)?)))
                     .collect::<Result<_, String>>()?,
-                number: number
-                    .as_ref()
-                    .map(|t| t.resolve(map))
-                    .transpose()?
-                    .map(Box::new),
-                string: string
-                    .as_ref()
-                    .map(|t| t.resolve(map))
-                    .transpose()?
-                    .map(Box::new),
-                bool: bool
-                    .as_ref()
-                    .map(|t| t.resolve(map))
-                    .transpose()?
-                    .map(Box::new),
-                table: table
-                    .as_ref()
-                    .map(|t| t.resolve(map))
-                    .transpose()?
-                    .map(Box::new),
-                function: function
-                    .as_ref()
-                    .map(|t| t.resolve(map))
-                    .transpose()?
-                    .map(Box::new),
+                number: Box::new(number.resolve(map)?),
+                string: Box::new(string.resolve(map)?),
+                bool: Box::new(bool.resolve(map)?),
+                table: Box::new(table.resolve(map)?),
+                function: Box::new(function.resolve(map)?),
             })),
             Type::Function(ps, r) => Ok(Type::Function(
                 ps.iter()
@@ -361,23 +341,11 @@ impl Type {
                     }
                 }
 
-                // Can I return nil? or should I return unknown?
+                // Normally, indexing a table returns nil, but here we return the specified type (like TypeScript).
                 return match path[0] {
-                    ConstData::Number(_) => type_table
-                        .number
-                        .as_ref()
-                        .map(|t| t.indexing(&path[1..]))
-                        .unwrap_or(Type::Nil),
-                    ConstData::String(_) => type_table
-                        .string
-                        .as_ref()
-                        .map(|t| t.indexing(&path[1..]))
-                        .unwrap_or(Type::Nil),
-                    ConstData::Bool(_) => type_table
-                        .bool
-                        .as_ref()
-                        .map(|t| t.indexing(&path[1..]))
-                        .unwrap_or(Type::Nil),
+                    ConstData::Number(_) => type_table.number.indexing(&path[1..]),
+                    ConstData::String(_) => type_table.string.indexing(&path[1..]),
+                    ConstData::Bool(_) => type_table.bool.indexing(&path[1..]),
                 };
             }
             Type::Function(_, _) => Type::never(),
@@ -454,43 +422,30 @@ impl TypeTable {
     pub fn any() -> Self {
         TypeTable {
             consts: vec![],
-            number: Some(Box::new(Type::Unknown)),
-            string: Some(Box::new(Type::Unknown)),
-            bool: Some(Box::new(Type::Unknown)),
-            table: Some(Box::new(Type::Unknown)),
-            function: Some(Box::new(Type::Unknown)),
+            number: Box::new(Type::Unknown),
+            string: Box::new(Type::Unknown),
+            bool: Box::new(Type::Unknown),
+            table: Box::new(Type::Unknown),
+            function: Box::new(Type::Unknown),
         }
     }
 
     fn include(&self, other: &TypeTable, handle_variable: &impl Fn(&Type) -> bool) -> bool {
-        match (&self.number, &other.number) {
-            (_, None) => {}
-            (Some(l), Some(r)) if l.include(r, handle_variable) => {}
-            _ => return false,
+        if *other.number != Type::Nil && !self.number.include(&other.number, handle_variable) {
+            return false;
         }
-
-        match (&self.string, &other.string) {
-            (_, None) => {}
-            (Some(l), Some(r)) if l.include(r, handle_variable) => {}
-            _ => return false,
+        if *other.string != Type::Nil && !self.string.include(&other.string, handle_variable) {
+            return false;
         }
-
-        match (&self.bool, &other.bool) {
-            (_, None) => {}
-            (Some(l), Some(r)) if l.include(r, handle_variable) => {}
-            _ => return false,
+        if *other.bool != Type::Nil && !self.bool.include(&other.bool, handle_variable) {
+            return false;
         }
-
-        match (&self.table, &other.table) {
-            (_, None) => {}
-            (Some(l), Some(r)) if l.include(r, handle_variable) => {}
-            _ => return false,
+        if *other.table != Type::Nil && !self.table.include(&other.table, handle_variable) {
+            return false;
         }
-
-        match (&self.function, &other.function) {
-            (_, None) => {}
-            (Some(l), Some(r)) if l.include(r, handle_variable) => {}
-            _ => return false,
+        if *other.function != Type::Nil && !self.function.include(&other.function, handle_variable)
+        {
+            return false;
         }
 
         if !self.consts.iter().all(|(cd, t)| {
@@ -507,21 +462,9 @@ impl TypeTable {
                 .iter()
                 .any(|(self_cd, self_t)| self_cd == cd && self_t.include(t, handle_variable))
                 || match cd {
-                    ConstData::Number(_) => self
-                        .number
-                        .as_ref()
-                        .map(|s| s.include(t, handle_variable))
-                        .unwrap_or(false),
-                    ConstData::String(_) => self
-                        .string
-                        .as_ref()
-                        .map(|s| s.include(t, handle_variable))
-                        .unwrap_or(false),
-                    ConstData::Bool(_) => self
-                        .bool
-                        .as_ref()
-                        .map(|s| s.include(t, handle_variable))
-                        .unwrap_or(false),
+                    ConstData::Number(_) => self.number.include(t, handle_variable),
+                    ConstData::String(_) => self.string.include(t, handle_variable),
+                    ConstData::Bool(_) => self.bool.include(t, handle_variable),
                 }
         }) {
             return false;
@@ -542,9 +485,9 @@ impl TypeTable {
                         .find(|(other_cd, _)| other_cd == cd)
                         .map(|(_, t)| t.clone())
                         .or_else(|| match cd {
-                            ConstData::Number(_) => other.number.clone().map(|t| (*t).to_owned()),
-                            ConstData::String(_) => other.string.clone().map(|t| (*t).to_owned()),
-                            ConstData::Bool(_) => other.bool.clone().map(|t| (*t).to_owned()),
+                            ConstData::Number(_) => Some((*other.number).clone()),
+                            ConstData::String(_) => Some((*other.string).clone()),
+                            ConstData::Bool(_) => Some((*other.bool).clone()),
                         })
                         .map(|other_t| (cd.clone(), t.intersect(&other_t)))
                 })
@@ -557,33 +500,18 @@ impl TypeTable {
                         .find(|(self_cd, _)| self_cd == cd)
                         .map(|(_, t)| t.clone())
                         .or_else(|| match cd {
-                            ConstData::Number(_) => self.number.clone().map(|t| (*t).to_owned()),
-                            ConstData::String(_) => self.string.clone().map(|t| (*t).to_owned()),
-                            ConstData::Bool(_) => self.bool.clone().map(|t| (*t).to_owned()),
+                            ConstData::Number(_) => Some((*other.number).clone()),
+                            ConstData::String(_) => Some((*other.string).clone()),
+                            ConstData::Bool(_) => Some((*other.bool).clone()),
                         })
                         .map(|self_t| (cd.clone(), t.intersect(&self_t)))
                 }))
                 .collect(),
-            number: match (&self.number, &other.number) {
-                (Some(l), Some(r)) => Some(Box::new(l.intersect(r))),
-                _ => None,
-            },
-            string: match (&self.string, &other.string) {
-                (Some(l), Some(r)) => Some(Box::new(l.intersect(r))),
-                _ => None,
-            },
-            bool: match (&self.bool, &other.bool) {
-                (Some(l), Some(r)) => Some(Box::new(l.intersect(r))),
-                _ => None,
-            },
-            table: match (&self.table, &other.table) {
-                (Some(l), Some(r)) => Some(Box::new(l.intersect(r))),
-                _ => None,
-            },
-            function: match (&self.function, &other.function) {
-                (Some(l), Some(r)) => Some(Box::new(l.intersect(r))),
-                _ => None,
-            },
+            number: Box::new(self.number.intersect(&other.number)),
+            string: Box::new(self.string.intersect(&other.string)),
+            bool: Box::new(self.bool.intersect(&other.bool)),
+            table: Box::new(self.table.intersect(&other.table)),
+            function: Box::new(self.function.intersect(&other.function)),
         }
     }
 
@@ -594,11 +522,11 @@ impl TypeTable {
                 .iter()
                 .map(|(cd, t)| (cd.clone(), t.normalize()))
                 .collect(),
-            number: self.number.as_ref().map(|t| Box::new(t.normalize())),
-            string: self.string.as_ref().map(|t| Box::new(t.normalize())),
-            bool: self.bool.as_ref().map(|t| Box::new(t.normalize())),
-            table: self.table.as_ref().map(|t| Box::new(t.normalize())),
-            function: self.function.as_ref().map(|t| Box::new(t.normalize())),
+            number: Box::new(self.number.normalize()),
+            string: Box::new(self.string.normalize()),
+            bool: Box::new(self.bool.normalize()),
+            table: Box::new(self.table.normalize()),
+            function: Box::new(self.function.normalize()),
         }
     }
 }
@@ -629,22 +557,34 @@ impl std::fmt::Display for TypeTable {
             }?;
             write!(f, ": {}", t)?;
         }
-        for (name, t) in &[
-            ("num", number),
-            ("str", string),
-            ("bool", bool),
-            ("table", table),
-            ("fn", function),
-        ] {
-            if let Some(t) = t {
-                if comma {
-                    write!(f, ", ")?;
-                } else {
-                    comma = true;
+
+        if [number, string, bool, table]
+            .iter()
+            .all(|t| &**t == &*function)
+        {
+            if comma {
+                write!(f, ", ")?;
+            }
+            write!(f, "[any]: {}", function)?;
+        } else {
+            for (name, t) in &[
+                ("num", number),
+                ("str", string),
+                ("bool", bool),
+                ("table", table),
+                ("fn", function),
+            ] {
+                if !matches!(&***t, Type::Unknown | Type::Error) {
+                    if comma {
+                        write!(f, ", ")?;
+                    } else {
+                        comma = true;
+                    }
+                    write!(f, "[{}]: {}", name, t)?;
                 }
-                write!(f, "[{}]: {}", name, t)?;
             }
         }
+
         write!(f, "}}")
     }
 }

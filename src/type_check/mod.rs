@@ -739,11 +739,11 @@ impl<'a> Context<'a> {
             }
             ast::Expression::Table(vec) => {
                 let mut consts = vec![];
-                let mut number = vec![];
-                let mut string = vec![];
-                let mut bool = vec![];
-                let mut table = vec![];
-                let mut functions = vec![];
+                let mut number = vec![Type::Nil];
+                let mut string = vec![Type::Nil];
+                let mut bool = vec![Type::Nil];
+                let mut table = vec![Type::Nil];
+                let mut functions = vec![Type::Nil];
 
                 for (key, value) in vec {
                     let value_types = self.check_expression(value);
@@ -775,11 +775,11 @@ impl<'a> Context<'a> {
 
                 vec![Type::Table(TypeTable {
                     consts,
-                    number: Type::from_types(number).map(Box::new),
-                    string: Type::from_types(string).map(Box::new),
-                    bool: Type::from_types(bool).map(Box::new),
-                    table: Type::from_types(table).map(Box::new),
-                    function: Type::from_types(functions).map(Box::new),
+                    number: Box::new(Type::Union(number).normalize()),
+                    string: Box::new(Type::Union(string).normalize()),
+                    bool: Box::new(Type::Union(bool).normalize()),
+                    table: Box::new(Type::Union(table).normalize()),
+                    function: Box::new(Type::Union(functions).normalize()),
                 })]
             }
             ast::Expression::LogicalAnd(a, b) => {
@@ -946,29 +946,19 @@ fn check_table(table_type: &TypeTable, index_type: &Type) -> Result<Type, String
 
     match index_type {
         Type::Number => {
-            if let Some(t) = &table_type.number {
-                return Ok((**t).clone());
-            }
+            return Ok((*table_type.number).clone());
         }
         Type::String => {
-            if let Some(t) = &table_type.string {
-                return Ok((**t).clone());
-            }
+            return Ok((*table_type.string).clone());
         }
         Type::Bool => {
-            if let Some(t) = &table_type.bool {
-                return Ok((**t).clone());
-            }
+            return Ok((*table_type.bool).clone());
         }
         Type::Table(_) => {
-            if let Some(t) = &table_type.table {
-                return Ok((**t).clone());
-            }
+            return Ok((*table_type.table).clone());
         }
         Type::Function(_, _) => {
-            if let Some(t) = &table_type.function {
-                return Ok((**t).clone());
-            }
+            return Ok((*table_type.function).clone());
         }
         Type::Const(const_data) => {
             for (cd, ty) in table_type.consts.iter() {

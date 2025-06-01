@@ -3,7 +3,8 @@ use crate::r#type::{ConstData, Type, TypeTable, Variable as TypeVariable};
 
 // NOTE: We cannot add "type" to the forbidden identifiers because it is a function in Lua.
 const FORBIDDEN_IDENTIFIERS: &[&str] = &[
-    "fn", "let", "if", "else", "while", "for", "in", "return", "break", "true", "false", "as", "declare",
+    "fn", "let", "if", "else", "while", "for", "in", "return", "break", "true", "false", "as",
+    "declare",
 ];
 
 // https://docs.rs/peg/latest/peg/
@@ -209,7 +210,7 @@ peg::parser!(pub grammar parser() for str {
 
     rule type_table() -> Type
         // TODO: {, [str]: num}
-        = "{" _ cs:((_ t:type_table_entry() _ { t }) ** ",") ","? ts:((_ "[" k:$("num" / "str" / "bool" / "table" / "fn") "]" _ ":" _ v:type_() _ { (k, v) }) ** ",") ","? _ "}"
+        = "{" _ cs:((_ t:type_table_entry() _ { t }) ** ",") ","? ts:((_ "[" k:$("num" / "str" / "bool" / "table" / "fn" / "any") "]" _ ":" _ v:type_() _ { (k, v) }) ** ",") ","? _ "}"
         {
             let mut tes = vec![];
             let mut i = 1;
@@ -221,11 +222,12 @@ peg::parser!(pub grammar parser() for str {
                     i += 1;
                 }
             }
-            let number = ts.iter().find(|(k, _)| *k == "num").map(|(_, v)| Box::new(v.clone()));
-            let string = ts.iter().find(|(k, _)| *k == "str").map(|(_, v)| Box::new(v.clone()));
-            let bool = ts.iter().find(|(k, _)| *k == "bool").map(|(_, v)| Box::new(v.clone()));
-            let table = ts.iter().find(|(k, _)| *k == "table").map(|(_, v)| Box::new(v.clone()));
-            let function = ts.iter().find(|(k, _)| *k == "fn").map(|(_, v)| Box::new(v.clone()));
+            let any = ts.iter().find(|(k, _)| *k == "any").map(|(_, v)| v.clone()).unwrap_or(Type::Nil);
+            let number = Box::new(ts.iter().find(|(k, _)| *k == "num").map(|(_, v)| v.clone()).unwrap_or(any.clone()));
+            let string = Box::new(ts.iter().find(|(k, _)| *k == "str").map(|(_, v)| v.clone()).unwrap_or(any.clone()));
+            let bool = Box::new(ts.iter().find(|(k, _)| *k == "bool").map(|(_, v)| v.clone()).unwrap_or(any.clone()));
+            let table = Box::new(ts.iter().find(|(k, _)| *k == "table").map(|(_, v)| v.clone()).unwrap_or(any.clone()));
+            let function = Box::new(ts.iter().find(|(k, _)| *k == "fn").map(|(_, v)| v.clone()).unwrap_or(any.clone()));
             Type::Table(TypeTable { consts: tes, number, string, bool, table, function })
         }
 
