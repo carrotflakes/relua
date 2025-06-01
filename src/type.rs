@@ -114,22 +114,19 @@ impl Type {
         }
     }
 
-    pub fn include(&self, other: &Type, encount_variable: &impl Fn(&Self) -> bool) -> bool {
+    pub fn include(&self, other: &Type, handle_variable: &impl Fn(&Self) -> bool) -> bool {
         match (self, other) {
             (Type::Error, _) | (_, Type::Error) => true,
 
-            (l @ Type::Union(_), Type::Union(r)) => {
-                r.iter().all(|r| l.include(r, encount_variable))
-            }
-            (Type::Union(l), r) => l.iter().any(|t| t.include(r, encount_variable)),
+            (l @ Type::Union(_), Type::Union(r)) => r.iter().all(|r| l.include(r, handle_variable)),
+            (Type::Union(l), r) => l.iter().any(|t| t.include(r, handle_variable)),
 
-            (Type::Any, _) => true,
-            (_, Type::Any) => true,
+            (Type::Any, _) | (_, Type::Any) => true,
             (Type::Unknown, _) => true,
 
             (Type::Const(l), Type::Const(r)) => l == r,
             (Type::Const(_), _) => false,
-            (l, Type::Const(cd)) => l.include(&cd.r#type(), encount_variable),
+            (l, Type::Const(cd)) => l.include(&cd.r#type(), handle_variable),
 
             (Type::Number, Type::Number) => true,
             (Type::Number, _) => false,
@@ -139,21 +136,20 @@ impl Type {
             (Type::Bool, _) => false,
             (Type::Nil, Type::Nil) => true,
             (Type::Nil, _) => false,
-            (Type::Table(l), Type::Table(r)) => l.include(r, encount_variable),
+            (Type::Table(l), Type::Table(r)) => l.include(r, handle_variable),
             (Type::Table(_), _) => false,
             (Type::Function(l_ps, l_ret), Type::Function(r_ps, r_ret)) => {
                 l_ps.iter()
                     .zip(r_ps.iter().chain(vec![Type::Nil].iter().cycle()))
-                    .all(|(l, r)| l.include(r, encount_variable))
+                    .all(|(l, r)| l.include(r, handle_variable))
                     && l_ret
                         .iter()
                         .zip(r_ret.iter().chain(vec![Type::Nil].iter().cycle()))
-                        .all(|(l, r)| l.include(r, encount_variable))
+                        .all(|(l, r)| l.include(r, handle_variable))
             }
             (Type::Function(_, _), _) => false,
             (Type::Variable(l), Type::Variable(r)) => l == r, // Is this correct?
-            (Type::Variable(_), _) => encount_variable(self),
-            // (Type::Variable(_), _) => true,
+            (Type::Variable(_), _) => handle_variable(self),
             (Type::Generic(_, _), _) => panic!("Generic type should be resolved: {}", self),
         }
     }
@@ -466,34 +462,34 @@ impl TypeTable {
         }
     }
 
-    fn include(&self, other: &TypeTable, encount_variable: &impl Fn(&Type) -> bool) -> bool {
+    fn include(&self, other: &TypeTable, handle_variable: &impl Fn(&Type) -> bool) -> bool {
         match (&self.number, &other.number) {
             (_, None) => {}
-            (Some(l), Some(r)) if l.include(r, encount_variable) => {}
+            (Some(l), Some(r)) if l.include(r, handle_variable) => {}
             _ => return false,
         }
 
         match (&self.string, &other.string) {
             (_, None) => {}
-            (Some(l), Some(r)) if l.include(r, encount_variable) => {}
+            (Some(l), Some(r)) if l.include(r, handle_variable) => {}
             _ => return false,
         }
 
         match (&self.bool, &other.bool) {
             (_, None) => {}
-            (Some(l), Some(r)) if l.include(r, encount_variable) => {}
+            (Some(l), Some(r)) if l.include(r, handle_variable) => {}
             _ => return false,
         }
 
         match (&self.table, &other.table) {
             (_, None) => {}
-            (Some(l), Some(r)) if l.include(r, encount_variable) => {}
+            (Some(l), Some(r)) if l.include(r, handle_variable) => {}
             _ => return false,
         }
 
         match (&self.function, &other.function) {
             (_, None) => {}
-            (Some(l), Some(r)) if l.include(r, encount_variable) => {}
+            (Some(l), Some(r)) if l.include(r, handle_variable) => {}
             _ => return false,
         }
 
@@ -501,7 +497,7 @@ impl TypeTable {
             other
                 .consts
                 .iter()
-                .any(|(other_cd, other_t)| other_cd == cd && t.include(other_t, encount_variable))
+                .any(|(other_cd, other_t)| other_cd == cd && t.include(other_t, handle_variable))
         }) {
             return false;
         }
@@ -509,22 +505,22 @@ impl TypeTable {
         if !other.consts.iter().all(|(cd, t)| {
             self.consts
                 .iter()
-                .any(|(self_cd, self_t)| self_cd == cd && self_t.include(t, encount_variable))
+                .any(|(self_cd, self_t)| self_cd == cd && self_t.include(t, handle_variable))
                 || match cd {
                     ConstData::Number(_) => self
                         .number
                         .as_ref()
-                        .map(|s| s.include(t, encount_variable))
+                        .map(|s| s.include(t, handle_variable))
                         .unwrap_or(false),
                     ConstData::String(_) => self
                         .string
                         .as_ref()
-                        .map(|s| s.include(t, encount_variable))
+                        .map(|s| s.include(t, handle_variable))
                         .unwrap_or(false),
                     ConstData::Bool(_) => self
                         .bool
                         .as_ref()
-                        .map(|s| s.include(t, encount_variable))
+                        .map(|s| s.include(t, handle_variable))
                         .unwrap_or(false),
                 }
         }) {
